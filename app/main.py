@@ -1,20 +1,57 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app.modules.tasks.router import router as tasks_router
-
-app=FastAPI(title="My backend API")
-
-@app.get("/")
-def home():
-    return {"message":"Welcome to my API"}
-
+from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
+from app.database.connection import init_db
+from app.modules.persons.router import router as persons_router
+from app.modules.reports.router import research_router, person_reports_router
+from app.utils.logger import logger
 
 
-@app.get("/about")   
-def about():
-    return {"message":"this is my fastAPI project"}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Initialize database schema
+    logger.info("Initializing Public Appearance Intelligence System database...")
+    init_db()
+    logger.info("Database initialized successfully.")
+    yield
+    # Shutdown
+    logger.info("Shutting down application...")
 
-app.include_router(
-    tasks_router,
-    prefix="/api/v1/tasks",
-    tags=["Tasks"]
-)    
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description="OSINT Research Platform for public source discovery, data extraction and AI-powered analysis.",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include Routers with standard API v1 prefix
+app.include_router(persons_router, prefix=settings.API_V1_PREFIX)
+app.include_router(research_router, prefix=settings.API_V1_PREFIX)
+app.include_router(person_reports_router, prefix=settings.API_V1_PREFIX)
+
+
+@app.get("/", tags=["Health"])
+def root():
+    return {
+        "status": "online",
+        "service": settings.APP_NAME,
+        "environment": settings.ENVIRONMENT,
+        "version": "1.0.0",
+        "docs_url": "/docs"
+    }
+
+
+@app.get("/health", tags=["Health"])
+def health_check():
+    return {"status": "healthy"}

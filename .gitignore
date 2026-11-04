@@ -14,3 +14,7 @@ __pycache__/
 
 # Testing
 .pytest_cache/
+
+# Databases
+*.db
+*.sqlite3
