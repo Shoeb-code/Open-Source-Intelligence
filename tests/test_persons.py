@@ -1,15 +1,7 @@
-import pytest
 from fastapi.testclient import TestClient
 from backend.main import app
-from backend.database.connection import SessionLocal, init_db
-from backend.database.models import Person
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    init_db()
 
 
 def test_register_person_with_profiles():
@@ -41,4 +33,3 @@ def test_register_person_with_profiles():
     assert ctx_data["name"] == "Jane Doe"
     assert "DeepTech Labs" in ctx_data["organizations"]
     assert "janedoe" in ctx_data["known_usernames"] or "janedoe_ai" in ctx_data["known_usernames"]
-

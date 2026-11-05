@@ -37,6 +37,16 @@ export const api = {
     return res.json();
   },
 
+  async deletePerson(personId) {
+    const res = await fetch(`${API_BASE}/persons/${personId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      throw new Error('Failed to delete person');
+    }
+    return true;
+  },
+
   async startResearch(personId) {
     const res = await fetch(`${API_BASE}/research/start`, {
       method: 'POST',

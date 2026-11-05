@@ -12,14 +12,14 @@ export default function TimelineView({ timeline }) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto py-4">
-      <div className="relative border-l-2 border-slate-700 ml-4 space-y-6">
+    <div className="max-w-3xl mx-auto py-2 sm:py-4">
+      <div className="relative border-l-2 border-slate-700 ml-2.5 sm:ml-4 space-y-5 sm:space-y-6">
         {timeline.map((entry, idx) => (
-          <div key={idx} className="relative pl-7">
+          <div key={idx} className="relative pl-5 sm:pl-7">
             {/* Pulsing indicator dot */}
             <div className="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full bg-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.8)] border-4 border-slate-950" />
 
-            <div className="glass-panel p-5 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md transition-all hover:border-slate-600">
+            <div className="glass-panel p-4 sm:p-5 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md transition-all hover:border-slate-600">
               <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
                 <span className="text-xs font-semibold text-cyan-400 font-mono">
                   {new Date(entry.date).toLocaleDateString(undefined, {

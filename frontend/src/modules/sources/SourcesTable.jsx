@@ -5,13 +5,13 @@ export default function SourcesTable({ sources }) {
   return (
     <div className="glass-panel rounded-xl overflow-hidden border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm border-collapse">
+        <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[500px]">
           <thead>
-            <tr className="bg-slate-950/80 border-b border-slate-700/80 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              <th className="py-3.5 px-5">Source Type</th>
-              <th className="py-3.5 px-5">URL Reference</th>
-              <th className="py-3.5 px-5">Extraction Status</th>
-              <th className="py-3.5 px-5">Collected At</th>
+            <tr className="bg-slate-950/80 border-b border-slate-700/80 text-[11px] sm:text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <th className="py-3 px-3.5 sm:px-5">Source Type</th>
+              <th className="py-3 px-3.5 sm:px-5">URL Reference</th>
+              <th className="py-3 px-3.5 sm:px-5">Extraction Status</th>
+              <th className="py-3 px-3.5 sm:px-5">Collected At</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800">
@@ -24,10 +24,10 @@ export default function SourcesTable({ sources }) {
             ) : (
               sources.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-800/40 transition-colors">
-                  <td className="py-3.5 px-5 font-semibold text-slate-200">
+                  <td className="py-3 px-3.5 sm:px-5 font-semibold text-slate-200">
                     <span className="font-mono text-xs">{s.source_type}</span>
                   </td>
-                  <td className="py-3.5 px-5 max-w-sm truncate">
+                  <td className="py-3 px-3.5 sm:px-5 max-w-xs truncate">
                     <a
                       href={s.source_url}
                       target="_blank"
@@ -38,7 +38,7 @@ export default function SourcesTable({ sources }) {
                       <ExternalLink size={12} className="shrink-0" />
                     </a>
                   </td>
-                  <td className="py-3.5 px-5">
+                  <td className="py-3 px-3.5 sm:px-5">
                     <span
                       className={`badge ${
                         s.extraction_status === 'SUCCESS' ? 'badge-verified' : 'badge-review'
@@ -47,8 +47,8 @@ export default function SourcesTable({ sources }) {
                       {s.extraction_status}
                     </span>
                   </td>
-                  <td className="py-3.5 px-5 text-xs text-slate-400 font-mono">
-                    {new Date(s.collected_at).toLocaleString()}
+                  <td className="py-3 px-3.5 sm:px-5 text-xs text-slate-400 font-mono">
+                    {new Date(s.collected_at).toLocaleDateString()}
                   </td>
                 </tr>
               ))

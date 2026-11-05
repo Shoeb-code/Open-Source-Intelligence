@@ -11,7 +11,12 @@ import {
   Globe,
   PlusCircle,
   Activity,
-  Link2
+  Link2,
+  Sparkles,
+  ArrowRight,
+  Search,
+  CheckCircle2,
+  Menu
 } from 'lucide-react';
 import { api } from './api';
 
@@ -50,6 +55,7 @@ export default function App() {
   // Modal States
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showUrlUploadModal, setShowUrlUploadModal] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // 1. Initial Load & Backend Health
   useEffect(() => {
@@ -83,7 +89,14 @@ export default function App() {
 
   // 2. Load Selected Target Data
   useEffect(() => {
-    if (!selectedPersonId) return;
+    if (!selectedPersonId) {
+      setSelectedPerson(null);
+      setReportData(null);
+      setAppearances([]);
+      setTimeline([]);
+      setSources([]);
+      return;
+    }
     const found = persons.find((p) => p.id === selectedPersonId);
     setSelectedPerson(found || null);
     fetchPersonIntelligence(selectedPersonId);
@@ -146,28 +159,52 @@ export default function App() {
     return () => clearInterval(interval);
   }, [activeJobId, isResearching, selectedPersonId]);
 
+  // 5. Delete Person
+  async function handleDeletePerson(personId) {
+    try {
+      await api.deletePerson(personId);
+      setPersons((prev) => prev.filter((p) => p.id !== personId));
+      if (selectedPersonId === personId) {
+        const remaining = persons.filter((p) => p.id !== personId);
+        setSelectedPersonId(remaining.length > 0 ? remaining[0].id : null);
+      }
+    } catch (err) {
+      alert(`Failed to delete target: ${err.message}`);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
       {/* --- TOP NAVBAR --- */}
-      <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_18px_rgba(6,182,212,0.4)]">
-            <Radar size={22} className="text-white" />
+      <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 px-3.5 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          {/* Mobile Drawer Hamburger Button */}
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="md:hidden p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+            title="Open Target Profiles"
+            aria-label="Open Target Profiles"
+          >
+            <Menu size={20} />
+          </button>
+
+          <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_18px_rgba(6,182,212,0.4)] shrink-0">
+            <Radar size={20} className="text-white sm:w-[22px] sm:h-[22px]" />
           </div>
-          <div>
-            <h1 className="text-base font-bold tracking-tight text-slate-100">
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-100 truncate">
               PUBLIC APPEARANCE <span className="text-cyan-400">INTELLIGENCE</span>
             </h1>
-            <p className="text-xs text-slate-400">
-              Level 2 • Public Source Discovery, Content Extraction & AI Analysis
+            <p className="text-[11px] sm:text-xs text-slate-400 truncate hidden xs:block">
+              Search & Analyze Public Interviews, Podcasts, Talks & Articles
             </p>
           </div>
         </div>
 
         {/* Backend Status Pill & Links */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
           <div
-            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold tracking-wide border ${
+            className={`inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-semibold tracking-wide border ${
               backendOnline
                 ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                 : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
@@ -175,34 +212,38 @@ export default function App() {
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                backendOnline
-                  ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]'
-                  : 'bg-rose-500'
+                backendOnline ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-rose-500'
               }`}
             />
-            <span>{backendOnline ? 'Backend Online (Port 8000)' : 'Connecting to Backend...'}</span>
+            <span className="hidden sm:inline">
+              {backendOnline ? 'System Online (Port 8000)' : 'Connecting to Server...'}
+            </span>
+            <span className="sm:hidden">{backendOnline ? 'Online' : 'Connecting...'}</span>
           </div>
 
           <a
             href="/docs"
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-slate-400 hover:text-slate-200 transition-colors inline-flex items-center gap-1.5"
+            className="text-xs text-slate-400 hover:text-slate-200 transition-colors inline-flex items-center gap-1"
           >
-            <span>API Docs</span>
+            <span className="hidden sm:inline">API Docs</span>
             <ExternalLink size={12} />
           </a>
         </div>
       </header>
 
       {/* --- MAIN LAYOUT --- */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden relative">
         {/* --- MODULE 1: TARGET SELECTOR SIDEBAR --- */}
         <TargetSelector
           persons={persons}
           selectedPersonId={selectedPersonId}
           onSelectPerson={setSelectedPersonId}
           onOpenRegisterModal={() => setShowRegisterModal(true)}
+          onDeletePerson={handleDeletePerson}
+          mobileOpen={mobileMenuOpen}
+          onCloseMobile={() => setMobileMenuOpen(false)}
         />
 
         {/* --- MAIN INTELLIGENCE DASHBOARD --- */}
@@ -210,17 +251,17 @@ export default function App() {
           {selectedPerson ? (
             <>
               {/* --- TARGET HEADER & CONTROL BAR --- */}
-              <div className="p-6 border-b border-slate-800 bg-slate-900/40 backdrop-blur-md flex flex-wrap items-center justify-between gap-6">
+              <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/40 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
                 <div>
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-100">{selectedPerson.name}</h2>
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">{selectedPerson.name}</h2>
                     <span className="badge badge-verified">
                       <ShieldCheck size={13} />
-                      <span>Active Identity</span>
+                      <span>Active Target</span>
                     </span>
                   </div>
-                  <p className="text-sm font-medium text-cyan-400 mt-1">
-                    {selectedPerson.profession || 'No title specified'}
+                  <p className="text-xs sm:text-sm font-medium text-cyan-400 mt-1">
+                    {selectedPerson.profession || 'Independent Professional'}
                   </p>
                   {selectedPerson.biography && (
                     <p className="text-xs text-slate-400 mt-1.5 max-w-2xl leading-relaxed">
@@ -247,11 +288,11 @@ export default function App() {
                 </div>
 
                 {/* ACTION CONTROLS: Upload URL & Run Automated Discovery */}
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
                   <button
                     onClick={() => fetchPersonIntelligence(selectedPerson.id)}
-                    className="btn btn-secondary p-2.5"
-                    title="Refresh Intelligence Data"
+                    className="btn btn-secondary p-2.5 shrink-0"
+                    title="Refresh Data"
                   >
                     <RotateCw size={16} />
                   </button>
@@ -259,7 +300,7 @@ export default function App() {
                   {/* Upload URL Button */}
                   <button
                     onClick={() => setShowUrlUploadModal(true)}
-                    className="btn btn-secondary border-cyan-500/50 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20"
+                    className="btn btn-secondary border-cyan-500/50 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
                   >
                     <Link2 size={15} />
                     <span>Upload / Analyze URL</span>
@@ -269,17 +310,17 @@ export default function App() {
                   <button
                     onClick={handleStartResearch}
                     disabled={isResearching}
-                    className="btn btn-primary px-5 py-2.5"
+                    className="btn btn-primary px-4 sm:px-5 py-2.5 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
                   >
                     {isResearching ? (
                       <>
                         <RotateCw size={16} className="animate-spin" />
-                        <span>Running Pipeline...</span>
+                        <span>Searching...</span>
                       </>
                     ) : (
                       <>
                         <Play size={16} fill="white" />
-                        <span>Run Discovery Engine</span>
+                        <span>Start Auto-Discovery</span>
                       </>
                     )}
                   </button>
@@ -310,7 +351,7 @@ export default function App() {
               )}
 
               {/* --- NAVIGATION TABS --- */}
-              <div className="flex border-b border-slate-800 bg-slate-900/60 px-6 overflow-x-auto">
+              <div className="flex border-b border-slate-800 bg-slate-900/60 px-3 sm:px-6 overflow-x-auto scroll-smooth">
                 {[
                   { id: 'overview', label: 'Executive Report', icon: FileText, count: null },
                   { id: 'appearances', label: 'Public Appearances', icon: Layers, count: appearances.length },
@@ -323,13 +364,13 @@ export default function App() {
                     <button
                       key={t.id}
                       onClick={() => setActiveTab(t.id)}
-                      className={`py-3.5 px-4 text-xs font-semibold tracking-wide border-b-2 flex items-center gap-2 whitespace-nowrap transition-colors ${
+                      className={`py-3 px-3 sm:px-4 text-xs font-semibold tracking-wide border-b-2 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap transition-colors ${
                         isActive
                           ? 'border-cyan-400 text-cyan-400'
                           : 'border-transparent text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <Icon size={16} />
+                      <Icon size={15} />
                       <span>{t.label}</span>
                       {t.count !== null && (
                         <span
@@ -348,7 +389,7 @@ export default function App() {
               </div>
 
               {/* --- TAB CONTENT AREA --- */}
-              <div className="p-6 flex-1">
+              <div className="p-3.5 sm:p-6 flex-1">
                 {loadingData && !isResearching ? (
                   <div className="text-center py-16 text-slate-500">
                     <RotateCw size={28} className="animate-spin mx-auto mb-3 opacity-50 text-cyan-400" />
@@ -361,25 +402,68 @@ export default function App() {
                       <div className="flex flex-col gap-6">
                         <MetricsGrid reportData={reportData} appearances={appearances} sources={sources} />
 
-                        {/* Executive Summary Card */}
-                        <div className="glass-panel p-6 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
-                          <h3 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
-                            <Activity size={18} className="text-cyan-400" />
-                            <span>Executive Summary</span>
-                          </h3>
-                          <p className="text-sm text-slate-300 leading-relaxed">
-                            {reportData?.executive_summary ||
-                              (appearances.length > 0
-                                ? `Identified ${appearances.length} public appearances across interviews, podcasts, and media for ${selectedPerson.name}. Verification scores indicate high relevance.`
-                                : `No public appearances recorded yet. Click "Run Discovery Engine" or "Upload / Analyze URL" to initiate extraction and analysis.`)}
-                          </p>
-                        </div>
+                        {appearances.length === 0 ? (
+                          /* FRIENDLY EMPTY STATE WHEN NO SEARCH HAS BEEN RUN YET */
+                          <div className="glass-panel p-8 rounded-2xl border border-slate-800 bg-slate-900/50 text-center max-w-2xl mx-auto my-6">
+                            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto mb-4 border border-cyan-500/20">
+                              <Sparkles size={24} />
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-100">
+                              No appearances collected for {selectedPerson.name} yet
+                            </h3>
+                            <p className="text-xs text-slate-400 mt-2 max-w-md mx-auto leading-relaxed">
+                              Choose how you would like to collect intelligence for this target:
+                            </p>
 
-                        {/* Topics and Statements 2-Column Grid */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                          <TopicCloud topics={reportData?.recurring_topics} />
-                          <EvidenceQuotes statements={reportData?.important_statements} />
-                        </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left">
+                              <div
+                                onClick={handleStartResearch}
+                                className="p-4 rounded-xl border border-slate-800 bg-slate-900 hover:border-cyan-500/50 cursor-pointer transition-all group"
+                              >
+                                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs mb-1">
+                                  <Play size={14} fill="currentColor" />
+                                  <span>Automated Web Search</span>
+                                </div>
+                                <p className="text-xs text-slate-400 leading-normal">
+                                  Automatically searches YouTube, Podcasts, News, and Events across the web.
+                                </p>
+                              </div>
+
+                              <div
+                                onClick={() => setShowUrlUploadModal(true)}
+                                className="p-4 rounded-xl border border-slate-800 bg-slate-900 hover:border-cyan-500/50 cursor-pointer transition-all group"
+                              >
+                                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs mb-1">
+                                  <Link2 size={14} />
+                                  <span>Analyze a Specific Link</span>
+                                </div>
+                                <p className="text-xs text-slate-400 leading-normal">
+                                  Paste any YouTube interview, podcast, or news article URL to analyze immediately.
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {/* Executive Summary Card */}
+                            <div className="glass-panel p-6 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
+                              <h3 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+                                <Activity size={18} className="text-cyan-400" />
+                                <span>Executive Summary</span>
+                              </h3>
+                              <p className="text-sm text-slate-300 leading-relaxed">
+                                {reportData?.executive_summary ||
+                                  `Identified ${appearances.length} public appearances across interviews, podcasts, and media for ${selectedPerson.name}.`}
+                              </p>
+                            </div>
+
+                            {/* Topics and Statements 2-Column Grid */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                              <TopicCloud topics={reportData?.recurring_topics} />
+                              <EvidenceQuotes statements={reportData?.important_statements} />
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
 
@@ -396,18 +480,57 @@ export default function App() {
               </div>
             </>
           ) : (
-            <div className="m-auto text-center p-12 text-slate-400">
-              <Radar size={48} className="mx-auto mb-4 text-cyan-400 opacity-50" />
-              <h3 className="text-lg font-bold text-slate-100">No Target Selected</h3>
-              <p className="text-sm mt-1 max-w-sm mx-auto text-slate-400">
-                Select an existing person from the left sidebar or register a new target to start public appearance intelligence discovery.
+            /* ONBOARDING HERO WHEN ZERO PERSONS IN DATABASE */
+            <div className="m-auto text-center p-8 max-w-xl">
+              <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto mb-5 border border-cyan-500/20 shadow-[0_0_25px_rgba(6,182,212,0.15)]">
+                <Radar size={32} />
+              </div>
+              <h2 className="text-2xl font-bold text-slate-100">
+                Welcome to Person Intelligence
+              </h2>
+              <p className="text-sm text-slate-400 mt-2 leading-relaxed">
+                Discover, transcribe, and analyze public interviews, podcasts, news coverage, and conference talks for any individual.
               </p>
+
+              {/* 3 Step Visual Guide */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-8 text-left">
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-bold flex items-center justify-center mb-2">
+                    1
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-200">Add a Person</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Enter the name & profession of the individual.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-bold flex items-center justify-center mb-2">
+                    2
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-200">Run Discovery</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Auto-search public sources or paste any video/article link.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
+                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-bold flex items-center justify-center mb-2">
+                    3
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-200">Get AI Insights</h4>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    View verified appearances, video transcripts & timeline.
+                  </p>
+                </div>
+              </div>
+
               <button
                 onClick={() => setShowRegisterModal(true)}
-                className="btn btn-primary mt-5"
+                className="btn btn-primary px-6 py-3 text-sm font-semibold shadow-lg shadow-cyan-500/20"
               >
-                <PlusCircle size={16} />
-                <span>Register New Person</span>
+                <PlusCircle size={18} />
+                <span>Add Your First Person to Start</span>
               </button>
             </div>
           )}

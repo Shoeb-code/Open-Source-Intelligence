@@ -37,3 +37,13 @@ def get_person_identity_context(person_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Person not found")
     return context
 
+
+
+
+@router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_person(person_id: str, db: Session = Depends(get_db)):
+    """Deletes a person and all their associated records."""
+    success = service.delete_person(db, person_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return None

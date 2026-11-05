@@ -39,8 +39,8 @@ export default function RegisterTargetModal({ isOpen, onClose, onTargetRegistere
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="glass-panel w-full max-w-lg rounded-2xl p-6 bg-slate-900 border border-slate-700/80 shadow-2xl">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="glass-panel w-full max-w-lg rounded-2xl p-4 sm:p-6 bg-slate-900 border border-slate-700/80 shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-5">
           <div className="flex items-center gap-2">
             <UserPlus size={20} className="text-cyan-400" />

@@ -2,16 +2,11 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 from backend.main import app
-from backend.database.connection import SessionLocal, init_db
 from backend.database.models import Person, Appearance, Source, AppearanceAnalysis, ResearchJob
 from backend.workers.tasks import execute_research_pipeline
+from tests.conftest import TestingSessionLocal
 
 client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def setup_db():
-    init_db()
 
 
 def test_end_to_end_pipeline_and_report():
@@ -28,7 +23,7 @@ def test_end_to_end_pipeline_and_report():
     person_id = person_data["id"]
 
     # 2. Pre-populate an appearance and source to verify reporting APIs
-    db = SessionLocal()
+    db = TestingSessionLocal()
     app_entry = Appearance(
         person_id=person_id,
         appearance_type="INTERVIEW",
@@ -97,7 +92,6 @@ def test_end_to_end_pipeline_and_report():
     assert report["statistics"]["verified_appearances"] == 1
     assert len(report["recurring_topics"]) > 0
     assert len(report["important_statements"]) > 0
-
 
 
 def test_direct_url_analysis_endpoint():

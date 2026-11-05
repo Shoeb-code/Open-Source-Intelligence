@@ -129,3 +129,14 @@ def build_identity_context(db: Session, person_id: str) -> Optional[IdentityCont
         profile_urls=profile_urls
     )
 
+
+
+
+def delete_person(db: Session, person_id: str) -> bool:
+    person = get_person_by_id(db, person_id)
+    if not person:
+        return False
+    db.delete(person)
+    db.commit()
+    logger.info(f"Deleted person: {person_id}")
+    return True
