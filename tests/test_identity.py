@@ -1,6 +1,6 @@
-from app.modules.persons.schemas import IdentityContext
-from app.modules.extraction.metadata_extractor import ExtractedPayload
-from app.modules.identity.verifier import IdentityVerifier
+from backend.modules.persons.schemas import IdentityContext
+from backend.modules.extraction.metadata_extractor import ExtractedPayload
+from backend.modules.identity.verifier import IdentityVerifier
 
 
 def test_identity_verifier_verified_match():

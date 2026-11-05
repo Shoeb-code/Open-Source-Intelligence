@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app
-from app.database.connection import SessionLocal, init_db
-from app.database.models import Person, Appearance, Source, AppearanceAnalysis, ResearchJob
-from app.workers.tasks import execute_research_pipeline
+from backend.main import app
+from backend.database.connection import SessionLocal, init_db
+from backend.database.models import Person, Appearance, Source, AppearanceAnalysis, ResearchJob
+from backend.workers.tasks import execute_research_pipeline
 
 client = TestClient(app)
 

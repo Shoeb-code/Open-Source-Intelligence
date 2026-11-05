@@ -1,5 +1,5 @@
-from app.modules.persons.schemas import IdentityContext
-from app.modules.discovery.query_builder import QueryBuilder
+from backend.modules.persons.schemas import IdentityContext
+from backend.modules.discovery.query_builder import QueryBuilder
 
 
 def test_query_builder():

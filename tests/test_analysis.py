@@ -1,7 +1,7 @@
-from app.modules.extraction.metadata_extractor import ExtractedPayload
-from app.modules.persons.schemas import IdentityContext
-from app.modules.analysis.classifier import AppearanceClassifier
-from app.modules.analysis.summarizer import AppearanceSummarizer
+from backend.modules.extraction.metadata_extractor import ExtractedPayload
+from backend.modules.persons.schemas import IdentityContext
+from backend.modules.analysis.classifier import AppearanceClassifier
+from backend.modules.analysis.summarizer import AppearanceSummarizer
 
 
 def test_appearance_classifier():

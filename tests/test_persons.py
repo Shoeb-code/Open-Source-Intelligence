@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
-from app.main import app
-from app.database.connection import SessionLocal, init_db
-from app.database.models import Person
+from backend.main import app
+from backend.database.connection import SessionLocal, init_db
+from backend.database.models import Person
 
 client = TestClient(app)
 

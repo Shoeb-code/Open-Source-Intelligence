@@ -1,20 +1,54 @@
-# Virtual environment
+# Python / Virtual Environments
 .venv/
 venv/
+ENV/
+env/
 
-# Environment variables
+# Environment Variables & Secrets
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
 
-# Python cache
+# Python Bytecode & Cache
 __pycache__/
 *.py[cod]
-
-# IDE
-.vscode/
-
-# Testing
+*$py.class
+*.so
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
 
-# Databases
+# Node & Frontend Build Artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+frontend/dist-ssr/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Databases & Local Data Stores
 *.db
+*.sqlite
 *.sqlite3
+appearance_intelligence.db
+
+# Logs & Process Artifacts
+logs/
+*.log
+celerybeat-schedule
+*.pid
+
+# IDE & OS Artifacts
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

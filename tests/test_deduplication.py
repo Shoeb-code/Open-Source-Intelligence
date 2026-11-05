@@ -1,5 +1,5 @@
-from app.modules.extraction.metadata_extractor import ExtractedPayload
-from app.modules.deduplication.deduplicator import Deduplicator
+from backend.modules.extraction.metadata_extractor import ExtractedPayload
+from backend.modules.deduplication.deduplicator import Deduplicator
 
 
 def test_deduplicator_consolidates_duplicates():

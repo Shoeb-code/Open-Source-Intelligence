@@ -102,13 +102,20 @@ An open-source OSINT intelligence backend built with **FastAPI**, **SQLAlchemy**
    ```
    *(Note: The system functions out-of-the-box with zero credentials using resilient fallback extractors and zero-credential search!)*
 
-4. **Run the API server**:
+4. **Run the Backend API Server**:
    ```bash
-   uvicorn app.main:app --reload --port 8000
+   uvicorn backend.main:app --reload --port 8000
    ```
-   Interactive Swagger docs will be available at: [http://localhost:8000/docs](http://localhost:8000/docs)
+   Interactive Swagger docs: [http://localhost:8000/docs](http://localhost:8000/docs)
 
-5. **Run tests**:
+5. **Run the React Frontend**:
+   ```powershell
+   cd frontend
+   npm run dev
+   ```
+   Open your browser at: [http://localhost:5173](http://localhost:5173)
+
+6. **Run tests**:
    ```bash
    pytest -v
    ```
@@ -117,8 +124,10 @@ An open-source OSINT intelligence backend built with **FastAPI**, **SQLAlchemy**
 
 ## 🐳 Docker Deployment
 
-To launch the full production environment (FastAPI API + PostgreSQL + Redis + Celery Worker):
+To launch the full production environment (FastAPI Backend + React Frontend + PostgreSQL + Redis + Celery Worker):
 ```bash
 docker-compose up --build
 ```
+- **Frontend Dashboard**: [http://localhost:3000](http://localhost:3000)
+- **Backend API & Swagger**: [http://localhost:8000/docs](http://localhost:8000/docs)
 
