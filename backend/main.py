@@ -53,5 +53,6 @@ def root():
 
 
 @app.get("/health", tags=["Health"])
+@app.get(f"{settings.API_V1_PREFIX}/health", tags=["Health"])
 def health_check():
     return {"status": "healthy"}

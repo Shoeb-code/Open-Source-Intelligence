@@ -59,10 +59,12 @@ export default function App() {
   }, []);
 
   async function checkHealthAndLoad() {
-    const isUp = await api.checkHealth();
-    setBackendOnline(isUp);
-    if (isUp) {
-      loadPersons();
+    try {
+      const isUp = await api.checkHealth();
+      setBackendOnline(isUp);
+      await loadPersons();
+    } catch {
+      setBackendOnline(false);
     }
   }
 
@@ -70,6 +72,7 @@ export default function App() {
     try {
       const list = await api.getPersons();
       setPersons(list);
+      setBackendOnline(true);
       if (list.length > 0 && !selectedPersonId) {
         setSelectedPersonId(list[0].id);
       }

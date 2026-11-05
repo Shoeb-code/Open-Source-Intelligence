@@ -3,8 +3,10 @@ const API_BASE = '/api/v1';
 export const api = {
   async checkHealth() {
     try {
-      const res = await fetch('/health');
-      return res.ok;
+      const res = await fetch(`${API_BASE}/health`);
+      if (res.ok) return true;
+      const fallback = await fetch('/health');
+      return fallback.ok;
     } catch {
       return false;
     }
