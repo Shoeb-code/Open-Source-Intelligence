@@ -5,6 +5,7 @@ from backend.config import settings
 from backend.database.connection import get_db
 from backend.modules.reports.schemas import (
     StartResearchRequest,
+    AnalyzeUrlRequest,
     ResearchJobResponse,
     AppearanceResponse,
     TimelineItemResponse,
@@ -94,3 +95,24 @@ def get_consolidated_report(person_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Person not found")
     return report
 
+
+@person_reports_router.post("/{person_id}/analyze-url", response_model=AppearanceResponse, status_code=status.HTTP_201_CREATED)
+def analyze_specific_url(
+    person_id: str,
+    payload: AnalyzeUrlRequest,
+    db: Session = Depends(get_db)
+):
+    """Directly ingests, scrapes, verifies, analyzes, and stores a specific public URL for a target individual."""
+    person = get_person_by_id(db, person_id)
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    appearance = service.analyze_and_store_url(
+        db=db,
+        person_id=person_id,
+        url=payload.url,
+        source_type=payload.source_type,
+        title=payload.title
+    )
+    if not appearance:
+        raise HTTPException(status_code=400, detail="Failed to analyze URL or invalid identity context")
+    return appearance

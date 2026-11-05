@@ -80,5 +80,17 @@ export const api = {
     if (!res.ok) throw new Error('Failed to fetch intelligence report');
     return res.json();
   },
-};
 
+  async analyzeUrl(personId, { url, source_type = null, title = null }) {
+    const res = await fetch(`${API_BASE}/persons/${personId}/analyze-url`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, source_type, title }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to analyze URL');
+    }
+    return res.json();
+  },
+};

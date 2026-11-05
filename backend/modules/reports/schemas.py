@@ -46,6 +46,12 @@ class StartResearchRequest(BaseModel):
     person_id: str
 
 
+class AnalyzeUrlRequest(BaseModel):
+    url: str
+    source_type: Optional[str] = None
+    title: Optional[str] = None
+
+
 class ResearchJobResponse(BaseModel):
     id: str
     person_id: str

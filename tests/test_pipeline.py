@@ -97,3 +97,28 @@ def test_end_to_end_pipeline_and_report():
     assert report["statistics"]["verified_appearances"] == 1
     assert len(report["recurring_topics"]) > 0
     assert len(report["important_statements"]) > 0
+
+
+
+def test_direct_url_analysis_endpoint():
+    # 1. Register Person
+    p_res = client.post("/api/v1/persons", json={
+        "name": "Alan Turing",
+        "profession": "Mathematician & Computer Scientist",
+        "biography": "Pioneer of theoretical computer science and artificial intelligence."
+    })
+    assert p_res.status_code == 201
+    person_id = p_res.json()["id"]
+
+    # 2. Upload / Analyze direct URL
+    upload_res = client.post(f"/api/v1/persons/{person_id}/analyze-url", json={
+        "url": "https://example.com/interviews/alan-turing-legacy",
+        "source_type": "NEWS",
+        "title": "Alan Turing on Computational Intelligence"
+    })
+    assert upload_res.status_code == 201
+    data = upload_res.json()
+    assert data["title"] == "Alan Turing on Computational Intelligence"
+    assert data["person_id"] == person_id
+    assert len(data["sources"]) == 1
+    assert data["analysis"] is not None
