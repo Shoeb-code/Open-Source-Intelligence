@@ -9,6 +9,8 @@ services:
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/appearance_db
       - REDIS_URL=redis://redis:6379/0
       - WORKER_MODE=celery
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - EXA_API_KEY=${EXA_API_KEY}
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
@@ -28,6 +30,8 @@ services:
       - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/appearance_db
       - REDIS_URL=redis://redis:6379/0
       - WORKER_MODE=celery
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - EXA_API_KEY=${EXA_API_KEY}
       - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}

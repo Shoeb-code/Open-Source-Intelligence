@@ -17,9 +17,15 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     WORKER_MODE: str = "async_task"  # "async_task" (FastAPI background) or "celery"
 
-    # API Keys
+    # API Keys & LLM Configuration
     OPENAI_API_KEY: Optional[str] = None
+    OPENAI_BASE_URL: Optional[str] = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+
+    # Groq API Configuration (Fast OpenAI-compatible inference)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+
     EXA_API_KEY: Optional[str] = None
     FIRECRAWL_API_KEY: Optional[str] = None
     YOUTUBE_API_KEY: Optional[str] = None

@@ -27,11 +27,25 @@ class AIAnalysisResult:
 
 
 class AppearanceSummarizer:
-    """Analyzes extracted appearance transcripts and articles using LLMs or robust fallback."""
+    """Analyzes extracted appearance transcripts and articles using LLMs (Groq / OpenAI) or robust fallback."""
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
-        self.model = settings.OPENAI_MODEL
+        # Prefer Groq if configured (high performance, generous tier)
+        if settings.GROQ_API_KEY:
+            self.client = OpenAI(
+                api_key=settings.GROQ_API_KEY,
+                base_url="https://api.groq.com/openai/v1"
+            )
+            self.model = settings.GROQ_MODEL or "llama-3.3-70b-versatile"
+        elif settings.OPENAI_API_KEY:
+            self.client = OpenAI(
+                api_key=settings.OPENAI_API_KEY,
+                base_url=settings.OPENAI_BASE_URL
+            )
+            self.model = settings.OPENAI_MODEL
+        else:
+            self.client = None
+            self.model = "extractive-fallback-v1"
 
     def _fallback_analysis(self, context: IdentityContext, payload: ExtractedPayload) -> AIAnalysisResult:
         """Deterministic extractive summary when LLM API key is not present."""
