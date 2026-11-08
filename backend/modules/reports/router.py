@@ -116,3 +116,19 @@ def analyze_specific_url(
     if not appearance:
         raise HTTPException(status_code=400, detail="Failed to analyze URL or invalid identity context")
     return appearance
+
+
+@person_reports_router.delete("/{person_id}/appearances/{appearance_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_appearance_record(
+    person_id: str,
+    appearance_id: str,
+    db: Session = Depends(get_db)
+):
+    """Deletes an appearance and all its associated sources and analysis."""
+    person = get_person_by_id(db, person_id)
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    success = service.delete_appearance(db, appearance_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Appearance not found")
+    return None

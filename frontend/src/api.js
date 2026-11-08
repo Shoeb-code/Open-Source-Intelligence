@@ -105,4 +105,14 @@ export const api = {
     }
     return res.json();
   },
+
+  async deleteAppearance(personId, appearanceId) {
+    const res = await fetch(`${API_BASE}/persons/${personId}/appearances/${appearanceId}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      throw new Error('Failed to delete appearance');
+    }
+    return true;
+  },
 };

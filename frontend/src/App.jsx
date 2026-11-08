@@ -173,6 +173,18 @@ export default function App() {
     }
   }
 
+  // 6. Delete Appearance
+  async function handleDeleteAppearance(appearanceId) {
+    if (!selectedPersonId) return;
+    try {
+      await api.deleteAppearance(selectedPersonId, appearanceId);
+      setAppearances((prev) => prev.filter((a) => a.id !== appearanceId));
+      fetchPersonIntelligence(selectedPersonId);
+    } catch (err) {
+      alert(`Failed to delete appearance: ${err.message}`);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
       {/* --- TOP NAVBAR --- */}
@@ -468,7 +480,12 @@ export default function App() {
                     )}
 
                     {/* --- TAB 2: APPEARANCES MODULE --- */}
-                    {activeTab === 'appearances' && <AppearanceList appearances={appearances} />}
+                    {activeTab === 'appearances' && (
+                      <AppearanceList
+                        appearances={appearances}
+                        onDeleteAppearance={handleDeleteAppearance}
+                      />
+                    )}
 
                     {/* --- TAB 3: TIMELINE MODULE --- */}
                     {activeTab === 'timeline' && <TimelineView timeline={timeline} />}

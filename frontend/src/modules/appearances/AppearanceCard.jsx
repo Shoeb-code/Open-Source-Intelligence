@@ -1,7 +1,7 @@
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Trash2 } from 'lucide-react';
 
-export default function AppearanceCard({ item }) {
+export default function AppearanceCard({ item, onDelete }) {
   const badgeTypeClass =
     item.appearance_type === 'PODCAST'
       ? 'badge-podcast'
@@ -40,17 +40,32 @@ export default function AppearanceCard({ item }) {
           </p>
         </div>
 
-        {item.sources?.[0] && (
-          <a
-            href={item.sources[0].source_url}
-            target="_blank"
-            rel="noreferrer"
-            className="btn btn-secondary text-xs px-3.5 py-1.5 whitespace-nowrap"
-          >
-            <span>View Source</span>
-            <ExternalLink size={13} />
-          </a>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {item.sources?.[0] && (
+            <a
+              href={item.sources[0].source_url}
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary text-xs px-3.5 py-1.5 whitespace-nowrap"
+            >
+              <span>View Source</span>
+              <ExternalLink size={13} />
+            </a>
+          )}
+          {onDelete && (
+            <button
+              onClick={() => {
+                if (window.confirm(`Delete "${item.title}"?`)) {
+                  onDelete(item.id);
+                }
+              }}
+              className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg border border-transparent hover:border-rose-500/30 transition-all"
+              title="Delete appearance"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {item.analysis?.summary && (

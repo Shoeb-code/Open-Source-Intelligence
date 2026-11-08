@@ -16,3 +16,6 @@ celery_app.conf.update(
     task_track_started=True
 )
 
+# Autodiscover and ensure tasks are registered when celery starts
+import backend.workers.tasks  # noqa: F401
+

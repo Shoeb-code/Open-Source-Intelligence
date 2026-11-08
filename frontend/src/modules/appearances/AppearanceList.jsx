@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Layers } from 'lucide-react';
 import AppearanceCard from './AppearanceCard';
 
-export default function AppearanceList({ appearances }) {
+export default function AppearanceList({ appearances, onDeleteAppearance }) {
   const [filter, setFilter] = useState('ALL');
 
   const filtered = appearances.filter((item) => {
@@ -38,7 +38,7 @@ export default function AppearanceList({ appearances }) {
       ) : (
         <div className="flex flex-col gap-3">
           {filtered.map((item) => (
-            <AppearanceCard key={item.id} item={item} />
+            <AppearanceCard key={item.id} item={item} onDelete={onDeleteAppearance} />
           ))}
         </div>
       )}

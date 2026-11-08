@@ -9,12 +9,12 @@ class ReportGenerator:
 
     @staticmethod
     def generate_report(person: Person, appearances: List[Appearance]) -> Dict[str, Any]:
-        # Filter for verified or likely match appearances
-        valid_appearances = [a for a in appearances if a.identity_status in ("VERIFIED", "LIKELY_MATCH")]
+        # Filter for non-rejected candidate appearances
+        valid_appearances = [a for a in appearances if a.identity_status in ("VERIFIED", "LIKELY_MATCH", "NEEDS_REVIEW")]
         
         # 1. Statistics
         type_counts = Counter([a.appearance_type for a in valid_appearances])
-        total_sources = sum(len(a.sources) for a in valid_appearances)
+        total_sources = sum(len(a.sources) for a in appearances)
         
         stats = {
             "total_appearances_discovered": len(appearances),
@@ -26,11 +26,19 @@ class ReportGenerator:
             "by_type": dict(type_counts)
         }
 
-        # 2. Chronological Timeline
+        # 2. Chronological Timeline with safe offset-naive and offset-aware normalization
+        def _get_sort_datetime(a: Appearance) -> datetime:
+            dt = a.published_at or a.created_at
+            if dt is None:
+                return datetime.min.replace(tzinfo=timezone.utc)
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+
         timeline = []
         dated_appearances = sorted(
             valid_appearances,
-            key=lambda x: x.published_at if x.published_at else x.created_at,
+            key=_get_sort_datetime,
             reverse=True
         )
         for a in dated_appearances:

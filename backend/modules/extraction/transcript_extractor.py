@@ -18,14 +18,22 @@ class TranscriptExtractor:
             return None, "FAILED"
 
         try:
-            # Attempt to fetch manual or auto-generated transcripts
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            # Check for YouTubeTranscriptApi classmethod vs modern instance fetch
+            if hasattr(YouTubeTranscriptApi, "get_transcript"):
+                transcript_entries = YouTubeTranscriptApi.get_transcript(video_id)
+            else:
+                yt_api = YouTubeTranscriptApi()
+                fetched = yt_api.fetch(video_id)
+                transcript_entries = fetched.to_raw_data() if hasattr(fetched, "to_raw_data") else fetched
+
             formatted_lines = []
-            for entry in transcript_list:
-                start_sec = int(entry.get("start", 0))
+            for entry in transcript_entries:
+                start_val = entry.get("start", 0) if isinstance(entry, dict) else getattr(entry, "start", 0)
+                text_val = entry.get("text", "") if isinstance(entry, dict) else getattr(entry, "text", "")
+                start_sec = int(start_val)
                 mins = start_sec // 60
                 secs = start_sec % 60
-                text = entry.get("text", "").replace("\n", " ").strip()
+                text = str(text_val).replace("\n", " ").strip()
                 formatted_lines.append(f"[{mins:02d}:{secs:02d}] {text}")
 
             transcript_text = "\n".join(formatted_lines)

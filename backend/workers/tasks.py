@@ -12,6 +12,7 @@ from backend.modules.identity.verifier import IdentityVerifier
 from backend.modules.deduplication.deduplicator import Deduplicator
 from backend.modules.analysis.classifier import AppearanceClassifier
 from backend.modules.analysis.summarizer import AppearanceSummarizer
+from backend.workers.celery_app import celery_app
 from backend.utils.logger import logger
 
 
@@ -19,6 +20,7 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@celery_app.task(name="execute_research_pipeline")
 def execute_research_pipeline(job_id: str):
     """
     Executes the end-to-end OSINT research workflow:

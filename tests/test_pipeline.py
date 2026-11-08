@@ -116,3 +116,102 @@ def test_direct_url_analysis_endpoint():
     assert data["person_id"] == person_id
     assert len(data["sources"]) == 1
     assert data["analysis"] is not None
+
+
+def test_delete_appearance_endpoint():
+    # Register Person
+    p_res = client.post("/api/v1/persons", json={
+        "name": "Grace Hopper",
+        "profession": "Computer Scientist and US Navy Rear Admiral"
+    })
+    assert p_res.status_code == 201
+    person_id = p_res.json()["id"]
+
+    # Ingest URL
+    upload_res = client.post(f"/api/v1/persons/{person_id}/analyze-url", json={
+        "url": "https://example.com/interviews/grace-hopper-compilers",
+        "source_type": "NEWS",
+        "title": "Grace Hopper on Nanoseconds and Compilers"
+    })
+    assert upload_res.status_code == 201
+    appearance_id = upload_res.json()["id"]
+
+    # Delete appearance
+    del_res = client.delete(f"/api/v1/persons/{person_id}/appearances/{appearance_id}")
+    assert del_res.status_code == 204
+
+    # Verify appearances is now empty
+    apps_res = client.get(f"/api/v1/persons/{person_id}/appearances")
+    assert apps_res.status_code == 200
+    assert len(apps_res.json()) == 0
+
+    # Verify 404 on non-existent appearance
+    del_res2 = client.delete(f"/api/v1/persons/{person_id}/appearances/{appearance_id}")
+    assert del_res2.status_code == 404
+
+
+def test_mixed_timezone_sorting():
+    # Register Person
+    p_res = client.post("/api/v1/persons", json={
+        "name": "Claude Shannon",
+        "profession": "Mathematician and Cryptographer"
+    })
+    assert p_res.status_code == 201
+    person_id = p_res.json()["id"]
+
+    # Add two appearances with mixed timezone awareness
+    db = TestingSessionLocal()
+    app1 = Appearance(
+        person_id=person_id,
+        appearance_type="INTERVIEW",
+        title="Claude Shannon Information Theory (Aware Date)",
+        identity_status="VERIFIED",
+        confidence_score=0.9,
+        published_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc)
+    )
+    app2 = Appearance(
+        person_id=person_id,
+        appearance_type="CONFERENCE",
+        title="Claude Shannon Bell Labs Talk (Naive Date)",
+        identity_status="LIKELY_MATCH",
+        confidence_score=0.75,
+        published_at=datetime.now(),
+        created_at=datetime.now()
+    )
+    db.add(app1)
+    db.add(app2)
+    db.commit()
+    db.close()
+
+    # Timeline should sort without TypeError
+    timeline_res = client.get(f"/api/v1/persons/{person_id}/timeline")
+    assert timeline_res.status_code == 200
+    timeline = timeline_res.json()
+    assert len(timeline) == 2
+
+    # Report should generate without TypeError
+    report_res = client.get(f"/api/v1/persons/{person_id}/report")
+    assert report_res.status_code == 200
+    report = report_res.json()
+    assert report["statistics"]["total_appearances_discovered"] == 2
+
+
+def test_research_job_dispatch():
+    p_res = client.post("/api/v1/persons", json={
+        "name": "Margaret Hamilton",
+        "profession": "Director of Software Engineering Division at MIT Instrumentation Laboratory"
+    })
+    assert p_res.status_code == 201
+    person_id = p_res.json()["id"]
+
+    job_res = client.post("/api/v1/research/start", json={"person_id": person_id})
+    assert job_res.status_code == 202
+    job_data = job_res.json()
+    assert job_data["person_id"] == person_id
+    assert job_data["status"] in ("PENDING", "RUNNING", "COMPLETED")
+
+    poll_res = client.get(f"/api/v1/research/{job_data['id']}")
+    assert poll_res.status_code == 200
+    assert poll_res.json()["id"] == job_data["id"]
+

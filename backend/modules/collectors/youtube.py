@@ -1,5 +1,7 @@
 import json
+import shutil
 import subprocess
+import sys
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
@@ -67,14 +69,15 @@ class YouTubeCollector:
         """Fallback search using yt-dlp flat-playlist metadata."""
         items: List[DiscoveredItem] = []
         try:
-            cmd = [
-                "yt-dlp",
+            ytdlp_bin = shutil.which("yt-dlp")
+            cmd = [ytdlp_bin] if ytdlp_bin else [sys.executable, "-m", "yt_dlp"]
+            cmd.extend([
                 f"ytsearch{max_results}:{query}",
                 "--dump-json",
                 "--flat-playlist",
                 "--skip-download",
                 "--no-warnings"
-            ]
+            ])
             result = subprocess.run(
                 cmd,
                 capture_output=True,

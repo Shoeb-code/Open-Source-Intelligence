@@ -37,11 +37,19 @@ class ArticleExtractor:
         Returns (content_text, extraction_status).
         Status is SUCCESS, RESTRICTED, or FAILED.
         """
+        text, status, _, _ = cls.extract_article(url)
+        return text, status
+
+    @classmethod
+    def extract_article(cls, url: str) -> Tuple[Optional[str], str, Optional[str], Optional[str]]:
+        """
+        Returns (content_text, extraction_status, page_title, publisher).
+        """
         # 1. Try Firecrawl if API key configured
         if settings.FIRECRAWL_API_KEY:
             fc_content = cls.extract_with_firecrawl(url)
             if fc_content:
-                return clean_text(fc_content), "SUCCESS"
+                return clean_text(fc_content), "SUCCESS", None, None
 
         # 2. Resilient standard HTTP + BeautifulSoup extraction
         headers = {
@@ -57,11 +65,24 @@ class ArticleExtractor:
                 resp = client.get(url, headers=headers)
                 if resp.status_code in (401, 403, 429):
                     logger.warning(f"Extraction restricted (HTTP {resp.status_code}) for URL: {url}")
-                    return None, "RESTRICTED"
+                    return None, "RESTRICTED", None, None
                 if resp.status_code != 200:
-                    return None, "FAILED"
+                    return None, "FAILED", None, None
 
                 soup = BeautifulSoup(resp.text, "lxml")
+
+                # Extract page metadata (title, publisher)
+                page_title = None
+                if soup.title and soup.title.string:
+                    page_title = clean_text(soup.title.string)
+                og_title = soup.find("meta", property="og:title") or soup.find("meta", attrs={"name": "twitter:title"})
+                if og_title and og_title.get("content"):
+                    page_title = clean_text(og_title["content"])
+
+                publisher = None
+                og_site = soup.find("meta", property="og:site_name") or soup.find("meta", attrs={"name": "publisher"})
+                if og_site and og_site.get("content"):
+                    publisher = clean_text(og_site["content"])
 
                 # Remove non-content tags
                 for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "aside"]):
@@ -70,7 +91,7 @@ class ArticleExtractor:
                 # Prefer article tag or main tag if present
                 main_elem = soup.find("article") or soup.find("main") or soup.find("body")
                 if not main_elem:
-                    return None, "FAILED"
+                    return None, "FAILED", page_title, publisher
 
                 # Extract paragraph texts
                 paragraphs = [p.get_text(strip=True) for p in main_elem.find_all(["p", "h1", "h2", "h3", "li"])]
@@ -79,12 +100,12 @@ class ArticleExtractor:
                     text = main_elem.get_text(separator="\n", strip=True)
 
                 cleaned = clean_text(text)
-                return (cleaned, "SUCCESS") if len(cleaned) > 50 else (cleaned, "SUCCESS")
+                return (cleaned, "SUCCESS", page_title, publisher)
 
         except httpx.HTTPError as e:
             logger.warning(f"Network error extracting {url}: {e}")
-            return None, "RESTRICTED"
+            return None, "RESTRICTED", None, None
         except Exception as e:
             logger.error(f"Unexpected error extracting {url}: {e}")
-            return None, "FAILED"
+            return None, "FAILED", None, None
 

@@ -42,6 +42,16 @@ def get_sources_by_person(db: Session, person_id: str) -> List[Source]:
     )
 
 
+def delete_appearance(db: Session, appearance_id: str) -> bool:
+    appearance = db.query(Appearance).filter(Appearance.id == appearance_id).first()
+    if not appearance:
+        return False
+    db.delete(appearance)
+    db.commit()
+    logger.info(f"Deleted appearance: {appearance_id}")
+    return True
+
+
 def generate_report_for_person(db: Session, person_id: str) -> Optional[Dict[str, Any]]:
     person = db.query(Person).filter(Person.id == person_id).first()
     if not person:
