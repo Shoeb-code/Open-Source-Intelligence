@@ -32,18 +32,25 @@ class QueryBuilder:
                 f'"{name}" webinar presentation',
                 f'"{name}" panel discussion',
             ],
+            "linkedin": [
+                f'"{name}" linkedin pulse article',
+                f'"{name}" linkedin post talk',
+                f'"{name}" linkedin thought leadership',
+            ],
         }
 
         # Context-enriched queries if profession or organization exists
         if profession:
             queries["youtube"].append(f'"{name}" {profession} interview')
             queries["news"].append(f'"{name}" {profession}')
+            queries["linkedin"].append(f'"{name}" {profession} linkedin')
 
         if orgs:
             primary_org = orgs[0]
             queries["youtube"].append(f'"{name}" "{primary_org}"')
             queries["news"].append(f'"{name}" "{primary_org}"')
             queries["events"].append(f'"{name}" "{primary_org}" speaker')
+            queries["linkedin"].append(f'"{name}" "{primary_org}" linkedin')
 
         return queries
 

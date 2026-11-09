@@ -40,7 +40,7 @@ class MetadataExtractor:
             if not content and item.description:
                 content = clean_text(item.description)
 
-        elif source_type in ("NEWS", "PODCAST", "EVENT", "WEBPAGE", "BLOG", "ARTICLE"):
+        elif source_type in ("NEWS", "PODCAST", "EVENT", "WEBPAGE", "BLOG", "ARTICLE", "LINKEDIN"):
             content, status, page_title, page_pub = ArticleExtractor.extract_article(canonical_url)
             if not content and item.description:
                 content = clean_text(item.description)

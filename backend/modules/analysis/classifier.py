@@ -21,6 +21,10 @@ class AppearanceClassifier:
             return "NEWS_ARTICLE"
         elif "blog" in text or "medium.com" in text or "substack.com" in text:
             return "BLOG"
+        elif "linkedin.com/pulse" in text:
+            return "ARTICLE"
+        elif "linkedin.com" in text or payload.source_type == "LINKEDIN":
+            return "LINKEDIN_POST"
 
         if payload.source_type == "YOUTUBE":
             return "INTERVIEW"

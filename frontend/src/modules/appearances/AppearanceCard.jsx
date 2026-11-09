@@ -10,6 +10,8 @@ export default function AppearanceCard({ item, onDelete }) {
       ? 'badge-interview'
       : item.appearance_type === 'CONFERENCE'
       ? 'badge-conference'
+      : item.appearance_type === 'LINKEDIN_POST'
+      ? 'badge-linkedin'
       : 'badge-news';
 
   const badgeStatusClass =

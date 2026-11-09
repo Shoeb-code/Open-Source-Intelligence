@@ -5,17 +5,19 @@ from backend.modules.collectors.youtube import YouTubeCollector, DiscoveredItem
 from backend.modules.collectors.news import NewsCollector
 from backend.modules.collectors.podcasts import PodcastCollector
 from backend.modules.collectors.webpages import WebpageCollector
+from backend.modules.collectors.linkedin import LinkedInCollector
 from backend.utils.logger import logger
 
 
 class DiscoveryService:
-    """Orchestrates multi-source public appearance discovery across YouTube, News, Podcasts, and Events."""
+    """Orchestrates multi-source public appearance discovery across YouTube, News, Podcasts, Events, and LinkedIn."""
 
     def __init__(self):
         self.youtube_collector = YouTubeCollector()
         self.news_collector = NewsCollector()
         self.podcast_collector = PodcastCollector()
         self.webpage_collector = WebpageCollector()
+        self.linkedin_collector = LinkedInCollector()
 
     def run_discovery(self, context: IdentityContext) -> List[DiscoveredItem]:
         logger.info(f"Initiating discovery for identity: '{context.name}' ({context.person_id})")
@@ -49,6 +51,13 @@ class DiscoveryService:
             event_items = self.webpage_collector.discover(queries_by_type["events"], max_per_query=3)
             discovered_items.extend(event_items)
             logger.info(f"Events discovery found {len(event_items)} candidate(s)")
+
+        # 5. LinkedIn discovery (Articles, Posts, Talks)
+        if "linkedin" in queries_by_type:
+            logger.info("Executing LinkedIn public posts & articles discovery...")
+            li_items = self.linkedin_collector.discover(queries_by_type["linkedin"], max_per_query=3)
+            discovered_items.extend(li_items)
+            logger.info(f"LinkedIn discovery found {len(li_items)} candidate(s)")
 
         logger.info(f"Total candidate appearances discovered: {len(discovered_items)}")
         return discovered_items
