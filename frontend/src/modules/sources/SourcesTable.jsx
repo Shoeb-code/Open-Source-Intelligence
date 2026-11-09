@@ -41,7 +41,11 @@ export default function SourcesTable({ sources }) {
                   <td className="py-3 px-3.5 sm:px-5">
                     <span
                       className={`badge ${
-                        s.extraction_status === 'SUCCESS' ? 'badge-verified' : 'badge-review'
+                        s.extraction_status === 'SUCCESS' || s.extraction_status === 'AI_TRANSCRIBED'
+                          ? 'badge-verified'
+                          : s.extraction_status === 'METADATA_FALLBACK'
+                          ? 'badge-likely'
+                          : 'badge-review'
                       }`}
                     >
                       {s.extraction_status}
