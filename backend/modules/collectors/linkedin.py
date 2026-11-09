@@ -28,3 +28,4 @@ class LinkedInCollector:
                         raw_metadata={"query": q, "snippet": r.snippet}
                     ))
         return items
+
