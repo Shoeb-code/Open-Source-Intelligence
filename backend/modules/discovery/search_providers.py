@@ -67,51 +67,103 @@ class ExaSearchProvider(BaseSearchProvider):
 
 
 class DuckDuckGoSearchProvider(BaseSearchProvider):
-    """Zero-credential fallback search provider using public html endpoint."""
+    """Zero-credential fallback search provider using public DuckDuckGo endpoints."""
 
     def search(self, query: str, limit: int = 5, source_type: str = "webpage") -> List[SearchResult]:
         results: List[SearchResult] = []
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+
+        # Strategy 1: lite.duckduckgo.com via POST (most resilient against anti-bot 202 challenges)
+        try:
+            with httpx.Client(timeout=12.0, follow_redirects=True) as client:
+                resp = client.post(
+                    "https://lite.duckduckgo.com/lite/",
+                    data={"q": query},
+                    headers=headers
+                )
+                if resp.status_code == 200 and "result-link" in resp.text:
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    links = soup.select(".result-link")
+                    snippets = soup.select(".result-snippet")
+
+                    for idx, link_elem in enumerate(links):
+                        title = link_elem.get_text(strip=True)
+                        raw_href = link_elem.get("href", "")
+                        clean_url = self._extract_clean_url(raw_href)
+                        if not clean_url or not title:
+                            continue
+
+                        snippet = ""
+                        if idx < len(snippets):
+                            snippet = snippets[idx].get_text(strip=True)
+
+                        results.append(SearchResult(
+                            title=title,
+                            url=canonicalize_url(clean_url),
+                            snippet=snippet,
+                            source_type=source_type
+                        ))
+                        if len(results) >= limit:
+                            return results
+        except Exception as e:
+            logger.debug(f"DuckDuckGo lite search error for '{query}': {e}")
+
+        if results:
+            return results
+
+        # Strategy 2: html.duckduckgo.com fallback
         try:
             url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
             with httpx.Client(timeout=10.0, follow_redirects=True) as client:
                 resp = client.get(url, headers=headers)
-                if resp.status_code != 200:
-                    return results
+                if resp.status_code == 200:
+                    soup = BeautifulSoup(resp.text, "html.parser")
+                    for item in soup.select(".result"):
+                        title_elem = item.select_one(".result__title a")
+                        snippet_elem = item.select_one(".result__snippet")
+                        if not title_elem:
+                            continue
 
-                soup = BeautifulSoup(resp.text, "html.parser")
-                for item in soup.select(".result"):
-                    title_elem = item.select_one(".result__title a")
-                    snippet_elem = item.select_one(".result__snippet")
-                    if not title_elem:
-                        continue
+                        title = title_elem.get_text(strip=True)
+                        raw_href = title_elem.get("href", "")
+                        clean_url = self._extract_clean_url(raw_href)
+                        if not clean_url:
+                            continue
 
-                    title = title_elem.get_text(strip=True)
-                    raw_href = title_elem.get("href", "")
-                    
-                    # DuckDuckGo wraps URLs in /l/?uddg=...
-                    clean_url = raw_href
-                    if "uddg=" in raw_href:
-                        parsed = urllib.parse.urlparse(raw_href)
-                        qs = urllib.parse.parse_qs(parsed.query)
-                        if "uddg" in qs:
-                            clean_url = qs["uddg"][0]
+                        snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
 
-                    snippet = snippet_elem.get_text(strip=True) if snippet_elem else ""
-
-                    results.append(SearchResult(
-                        title=title,
-                        url=canonicalize_url(clean_url),
-                        snippet=snippet,
-                        source_type=source_type
-                    ))
-                    if len(results) >= limit:
-                        break
+                        results.append(SearchResult(
+                            title=title,
+                            url=canonicalize_url(clean_url),
+                            snippet=snippet,
+                            source_type=source_type
+                        ))
+                        if len(results) >= limit:
+                            break
         except Exception as e:
             logger.warning(f"DuckDuckGo search error for '{query}': {e}")
+
         return results
+
+    @staticmethod
+    def _extract_clean_url(raw_href: str) -> str:
+        if not raw_href:
+            return ""
+        if "uddg=" in raw_href:
+            parsed = urllib.parse.urlparse(raw_href)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "uddg" in qs:
+                return qs["uddg"][0]
+        if raw_href.startswith("//"):
+            return f"https:{raw_href}"
+        return raw_href
 
 
 class SearchProviderFactory:

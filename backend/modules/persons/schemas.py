@@ -34,6 +34,16 @@ class PersonCreate(BaseModel):
     additional_profiles: Optional[List[SocialProfileCreate]] = Field(default_factory=list)
 
 
+class PersonUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=255, description="Full name of the individual")
+    profession: Optional[str] = Field(None, max_length=255, description="Profession or title")
+    biography: Optional[str] = Field(None, description="Short background or known career bio")
+    linkedin_url: Optional[str] = Field(None, description="LinkedIn profile URL")
+    instagram_url: Optional[str] = Field(None, description="Instagram profile URL")
+    youtube_url: Optional[str] = Field(None, description="YouTube channel or profile URL")
+    additional_profiles: Optional[List[SocialProfileCreate]] = None
+
+
 class PersonResponse(BaseModel):
     id: str
     name: str

@@ -2,7 +2,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from backend.database.connection import get_db
-from backend.modules.persons.schemas import PersonCreate, PersonResponse, IdentityContext
+from backend.modules.persons.schemas import PersonCreate, PersonUpdate, PersonResponse, IdentityContext
 from backend.modules.persons import service
 
 router = APIRouter(prefix="/persons", tags=["Persons"])
@@ -38,6 +38,13 @@ def get_person_identity_context(person_id: str, db: Session = Depends(get_db)):
     return context
 
 
+@router.put("/{person_id}", response_model=PersonResponse)
+def update_person_info(person_id: str, payload: PersonUpdate, db: Session = Depends(get_db)):
+    """Updates an existing person's details and social profile URLs."""
+    updated = service.update_person(db, person_id, payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return updated
 
 
 @router.delete("/{person_id}", status_code=status.HTTP_204_NO_CONTENT)

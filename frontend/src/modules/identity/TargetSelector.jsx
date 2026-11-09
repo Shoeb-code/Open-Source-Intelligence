@@ -124,15 +124,28 @@ export default function TargetSelector({
                     {p.profession || 'Independent Professional'}
                   </p>
 
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {p.social_profiles?.map((sp) => (
-                      <span
-                        key={sp.id}
-                        className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-950/80 text-slate-400 border border-slate-800"
-                      >
-                        {sp.platform}
-                      </span>
-                    ))}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                    {p.social_profiles?.map((sp) => {
+                      const isLi = sp.platform === 'linkedin';
+                      const isIg = sp.platform === 'instagram';
+                      const isYt = sp.platform === 'youtube';
+                      const badgeColor = isLi
+                        ? 'text-sky-400 border-sky-500/30 bg-sky-500/10'
+                        : isIg
+                        ? 'text-pink-400 border-pink-500/30 bg-pink-500/10'
+                        : isYt
+                        ? 'text-rose-400 border-rose-500/30 bg-rose-500/10'
+                        : 'text-slate-400 border-slate-800 bg-slate-950/80';
+
+                      return (
+                        <span
+                          key={sp.id}
+                          className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${badgeColor}`}
+                        >
+                          {sp.platform}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               );

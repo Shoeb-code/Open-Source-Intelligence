@@ -47,6 +47,19 @@ export const api = {
     return true;
   },
 
+  async updatePerson(personId, payload) {
+    const res = await fetch(`${API_BASE}/persons/${personId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to update target details');
+    }
+    return res.json();
+  },
+
   async startResearch(personId) {
     const res = await fetch(`${API_BASE}/research/start`, {
       method: 'POST',

@@ -33,9 +33,15 @@ class QueryBuilder:
                 f'"{name}" panel discussion',
             ],
             "linkedin": [
+                f'"{name}" linkedin',
+                f'"{name}" linkedin post',
                 f'"{name}" linkedin pulse article',
-                f'"{name}" linkedin post talk',
                 f'"{name}" linkedin thought leadership',
+            ],
+            "instagram": [
+                f'"{name}" instagram',
+                f'"{name}" instagram reel',
+                f'"{name}" instagram post',
             ],
         }
 
@@ -44,6 +50,7 @@ class QueryBuilder:
             queries["youtube"].append(f'"{name}" {profession} interview')
             queries["news"].append(f'"{name}" {profession}')
             queries["linkedin"].append(f'"{name}" {profession} linkedin')
+            queries["instagram"].append(f'"{name}" {profession} instagram')
 
         if orgs:
             primary_org = orgs[0]
@@ -51,6 +58,7 @@ class QueryBuilder:
             queries["news"].append(f'"{name}" "{primary_org}"')
             queries["events"].append(f'"{name}" "{primary_org}" speaker')
             queries["linkedin"].append(f'"{name}" "{primary_org}" linkedin')
+            queries["instagram"].append(f'"{name}" "{primary_org}" instagram')
 
         return queries
 

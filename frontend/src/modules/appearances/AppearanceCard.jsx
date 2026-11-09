@@ -12,6 +12,10 @@ export default function AppearanceCard({ item, onDelete }) {
       ? 'badge-conference'
       : item.appearance_type === 'LINKEDIN_POST'
       ? 'badge-linkedin'
+      : item.appearance_type === 'INSTAGRAM_REEL'
+      ? 'badge-reel'
+      : item.appearance_type === 'INSTAGRAM_POST'
+      ? 'badge-instagram'
       : 'badge-news';
 
   const badgeStatusClass =

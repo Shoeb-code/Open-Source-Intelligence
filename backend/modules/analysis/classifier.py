@@ -7,8 +7,20 @@ class AppearanceClassifier:
 
     @staticmethod
     def classify(payload: ExtractedPayload) -> str:
+        url_lower = (payload.canonical_url or payload.source_url).lower()
         text = f"{payload.title} {payload.description or ''} {payload.source_url}".lower()
 
+        # 1. Platform specific social classifications
+        if "linkedin.com/pulse" in url_lower:
+            return "ARTICLE"
+        elif "linkedin.com" in url_lower or payload.source_type == "LINKEDIN":
+            return "LINKEDIN_POST"
+        elif "instagram.com/reel" in url_lower:
+            return "INSTAGRAM_REEL"
+        elif "instagram.com" in url_lower or payload.source_type == "INSTAGRAM":
+            return "INSTAGRAM_POST"
+
+        # 2. Appearance format classifications
         if "podcast" in text or "episode" in text:
             return "PODCAST"
         elif "interview" in text or "qa" in text or "q&a" in text:
@@ -21,10 +33,6 @@ class AppearanceClassifier:
             return "NEWS_ARTICLE"
         elif "blog" in text or "medium.com" in text or "substack.com" in text:
             return "BLOG"
-        elif "linkedin.com/pulse" in text:
-            return "ARTICLE"
-        elif "linkedin.com" in text or payload.source_type == "LINKEDIN":
-            return "LINKEDIN_POST"
 
         if payload.source_type == "YOUTUBE":
             return "INTERVIEW"

@@ -2,7 +2,7 @@ from urllib.parse import urlparse
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from backend.database.models import Person, SocialProfile
-from backend.modules.persons.schemas import PersonCreate, IdentityContext
+from backend.modules.persons.schemas import PersonCreate, PersonUpdate, IdentityContext
 from backend.utils.url_validator import canonicalize_url, detect_platform
 from backend.utils.logger import logger
 
@@ -153,6 +153,59 @@ def build_identity_context(db: Session, person_id: str) -> Optional[IdentityCont
     )
 
 
+def update_person(db: Session, person_id: str, payload: PersonUpdate) -> Optional[Person]:
+    """Updates an existing person's details and social profile URLs."""
+    person = get_person_by_id(db, person_id)
+    if not person:
+        return None
+
+    if payload.name is not None and payload.name.strip():
+        person.name = payload.name.strip()
+    if payload.profession is not None:
+        person.profession = payload.profession.strip() if payload.profession else None
+    if payload.biography is not None:
+        person.biography = payload.biography.strip() if payload.biography else None
+
+    def _upsert_platform_profile(platform: str, url_val: Optional[str]):
+        if url_val is None:
+            return
+        url_clean = canonicalize_url(url_val.strip()) if url_val.strip() else ""
+        existing = db.query(SocialProfile).filter(
+            SocialProfile.person_id == person.id,
+            SocialProfile.platform == platform
+        ).first()
+
+        if url_clean:
+            username = _extract_username_from_url(url_clean, platform)
+            if existing:
+                existing.profile_url = url_clean
+                existing.username = username
+                existing.verification_status = "VERIFIED"
+            else:
+                db.add(SocialProfile(
+                    person_id=person.id,
+                    platform=platform,
+                    username=username,
+                    profile_url=url_clean,
+                    verification_status="VERIFIED"
+                ))
+        elif existing and not url_val.strip():
+            db.delete(existing)
+
+    _upsert_platform_profile("linkedin", payload.linkedin_url)
+    _upsert_platform_profile("instagram", payload.instagram_url)
+    _upsert_platform_profile("youtube", payload.youtube_url)
+
+    if payload.additional_profiles is not None:
+        for p in payload.additional_profiles:
+            clean_url = canonicalize_url(p.profile_url)
+            platform = p.platform or detect_platform(clean_url)
+            _upsert_platform_profile(platform, clean_url)
+
+    db.commit()
+    db.refresh(person)
+    logger.info(f"Updated person details for {person.name} ({person.id})")
+    return person
 
 
 def delete_person(db: Session, person_id: str) -> bool:

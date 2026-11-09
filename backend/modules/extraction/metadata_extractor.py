@@ -40,14 +40,21 @@ class MetadataExtractor:
             if not content and item.description:
                 content = clean_text(item.description)
 
-        elif source_type in ("NEWS", "PODCAST", "EVENT", "WEBPAGE", "BLOG", "ARTICLE", "LINKEDIN"):
+        elif source_type in ("NEWS", "PODCAST", "EVENT", "WEBPAGE", "BLOG", "ARTICLE", "LINKEDIN", "INSTAGRAM"):
             content, status, page_title, page_pub = ArticleExtractor.extract_article(canonical_url)
             if not content and item.description:
                 content = clean_text(item.description)
+                if status in ("PENDING", "RESTRICTED", "FAILED"):
+                    status = "METADATA_FALLBACK"
             if page_title and (not title or title == "Uploaded Media Appearance"):
                 title = page_title
             if page_pub and not publisher:
                 publisher = page_pub
+            if not publisher:
+                if source_type == "LINKEDIN" or "linkedin.com" in canonical_url:
+                    publisher = "LinkedIn"
+                elif source_type == "INSTAGRAM" or "instagram.com" in canonical_url:
+                    publisher = "Instagram"
 
         content_hash = compute_content_hash(content or title or item.url)
 

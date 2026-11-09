@@ -16,7 +16,8 @@ import {
   ArrowRight,
   Search,
   CheckCircle2,
-  Menu
+  Menu,
+  UserCheck
 } from 'lucide-react';
 import { api } from './api';
 
@@ -30,6 +31,7 @@ import EvidenceQuotes from './modules/overview/EvidenceQuotes';
 import AppearanceList from './modules/appearances/AppearanceList';
 import TimelineView from './modules/timeline/TimelineView';
 import SourcesTable from './modules/sources/SourcesTable';
+import TargetAccountPage from './modules/profile/TargetAccountPage';
 
 export default function App() {
   const [backendOnline, setBackendOnline] = useState(false);
@@ -43,7 +45,7 @@ export default function App() {
   const [isResearching, setIsResearching] = useState(false);
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState('overview'); // overview, appearances, timeline, sources
+  const [activeTab, setActiveTab] = useState('account'); // account, overview, appearances, timeline, sources
 
   // Intelligence Data
   const [reportData, setReportData] = useState(null);
@@ -57,37 +59,39 @@ export default function App() {
   const [showUrlUploadModal, setShowUrlUploadModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // 1. Initial Load & Backend Health
+  // 1. Initial Load & Backend Health Ping
   useEffect(() => {
-    checkHealthAndLoad();
-    const interval = setInterval(checkHealthAndLoad, 15000);
+    initialLoad();
+
+    // Low-frequency health ping every 45s (ping ONLY, NEVER re-fetch persons or reset intelligence state)
+    const interval = setInterval(async () => {
+      try {
+        const isUp = await api.checkHealth();
+        setBackendOnline(isUp);
+      } catch {
+        setBackendOnline(false);
+      }
+    }, 45000);
+
     return () => clearInterval(interval);
   }, []);
 
-  async function checkHealthAndLoad() {
+  async function initialLoad() {
     try {
       const isUp = await api.checkHealth();
       setBackendOnline(isUp);
-      await loadPersons();
-    } catch {
-      setBackendOnline(false);
-    }
-  }
-
-  async function loadPersons() {
-    try {
       const list = await api.getPersons();
       setPersons(list);
-      setBackendOnline(true);
       if (list.length > 0 && !selectedPersonId) {
         setSelectedPersonId(list[0].id);
       }
     } catch (err) {
-      console.error('Error loading persons:', err);
+      console.error('Initial load error:', err);
+      setBackendOnline(false);
     }
   }
 
-  // 2. Load Selected Target Data
+  // 2. Load Selected Target Data (ONLY re-runs when the user selects a different target)
   useEffect(() => {
     if (!selectedPersonId) {
       setSelectedPerson(null);
@@ -100,7 +104,15 @@ export default function App() {
     const found = persons.find((p) => p.id === selectedPersonId);
     setSelectedPerson(found || null);
     fetchPersonIntelligence(selectedPersonId);
-  }, [selectedPersonId, persons]);
+  }, [selectedPersonId]);
+
+  // Keep selectedPerson metadata in sync if persons array is updated without re-fetching all intelligence
+  useEffect(() => {
+    if (selectedPersonId && persons.length > 0) {
+      const found = persons.find((p) => p.id === selectedPersonId);
+      if (found) setSelectedPerson(found);
+    }
+  }, [persons, selectedPersonId]);
 
   async function fetchPersonIntelligence(personId) {
     setLoadingData(true);
@@ -266,11 +278,29 @@ export default function App() {
               <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/40 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
                 <div>
                   <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100">{selectedPerson.name}</h2>
+                    <h2
+                      onClick={() => setActiveTab('account')}
+                      className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100 hover:text-cyan-400 cursor-pointer transition-colors"
+                      title="Click to view dedicated Account Profile"
+                    >
+                      {selectedPerson.name}
+                    </h2>
                     <span className="badge badge-verified">
                       <ShieldCheck size={13} />
                       <span>Active Target</span>
                     </span>
+                    <button
+                      onClick={() => setActiveTab('account')}
+                      className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all ${
+                        activeTab === 'account'
+                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm'
+                          : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-300'
+                      }`}
+                      title="View dedicated Account Page with full bio and social profiles"
+                    >
+                      <UserCheck size={13} className="text-cyan-400" />
+                      <span>Account Dossier</span>
+                    </button>
                   </div>
                   <p className="text-xs sm:text-sm font-medium text-cyan-400 mt-1">
                     {selectedPerson.profession || 'Independent Professional'}
@@ -365,8 +395,9 @@ export default function App() {
               {/* --- NAVIGATION TABS --- */}
               <div className="flex border-b border-slate-800 bg-slate-900/60 px-3 sm:px-6 overflow-x-auto scroll-smooth">
                 {[
+                  { id: 'account', label: 'Target Account & Socials', icon: UserCheck, count: null },
                   { id: 'overview', label: 'Executive Report', icon: FileText, count: null },
-                  { id: 'appearances', label: 'Public Appearances', icon: Layers, count: appearances.length },
+                  { id: 'appearances', label: 'Public Appearances & Media', icon: Layers, count: appearances.length },
                   { id: 'timeline', label: 'Chronological Timeline', icon: Calendar, count: timeline.length },
                   { id: 'sources', label: 'Sources & Provenance', icon: Globe, count: sources.length },
                 ].map((t) => {
@@ -409,6 +440,20 @@ export default function App() {
                   </div>
                 ) : (
                   <>
+                    {/* --- TAB 0: TARGET ACCOUNT PROFILE & SOCIALS MODULE --- */}
+                    {activeTab === 'account' && (
+                      <TargetAccountPage
+                        person={selectedPerson}
+                        appearances={appearances}
+                        sources={sources}
+                        reportData={reportData}
+                        onStartResearch={handleStartResearch}
+                        isResearching={isResearching}
+                        onOpenUrlModal={() => setShowUrlUploadModal(true)}
+                        onDeleteAppearance={handleDeleteAppearance}
+                      />
+                    )}
+
                     {/* --- TAB 1: EXECUTIVE OVERVIEW MODULE --- */}
                     {activeTab === 'overview' && (
                       <div className="flex flex-col gap-6">

@@ -23,6 +23,33 @@ def test_appearance_classifier():
     )
     assert AppearanceClassifier.classify(p2) == "CONFERENCE"
 
+    p3 = ExtractedPayload(
+        title="Madhu Lunawat on LinkedIn: Keynote at AIC",
+        source_url="https://www.linkedin.com/posts/madhulunawat_keynote",
+        canonical_url="https://www.linkedin.com/posts/madhulunawat_keynote",
+        source_type="LINKEDIN",
+        extraction_status="SUCCESS"
+    )
+    assert AppearanceClassifier.classify(p3) == "LINKEDIN_POST"
+
+    p4 = ExtractedPayload(
+        title="Ms. Madhu Lunawat - CEO of The Wealth Company - Instagram Reel",
+        source_url="https://www.instagram.com/reel/DRebwp5DCr2/",
+        canonical_url="https://www.instagram.com/reel/DRebwp5DCr2/",
+        source_type="INSTAGRAM",
+        extraction_status="SUCCESS"
+    )
+    assert AppearanceClassifier.classify(p4) == "INSTAGRAM_REEL"
+
+    p5 = ExtractedPayload(
+        title="Madhu Lunawat, Founder, MD & CEO - The Wealth Company",
+        source_url="https://www.instagram.com/p/DSHW9Bgj5F7/",
+        canonical_url="https://www.instagram.com/p/DSHW9Bgj5F7/",
+        source_type="INSTAGRAM",
+        extraction_status="SUCCESS"
+    )
+    assert AppearanceClassifier.classify(p5) == "INSTAGRAM_POST"
+
 
 def test_appearance_summarizer_fallback_evidence():
     context = IdentityContext(

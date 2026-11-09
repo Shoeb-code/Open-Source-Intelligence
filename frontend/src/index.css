@@ -114,6 +114,18 @@
   border: 1px solid rgba(10, 102, 194, 0.45);
 }
 
+.badge-instagram {
+  background: rgba(225, 48, 108, 0.2);
+  color: #f472b6;
+  border: 1px solid rgba(225, 48, 108, 0.45);
+}
+
+.badge-reel {
+  background: rgba(244, 63, 94, 0.2);
+  color: #fda4af;
+  border: 1px solid rgba(244, 63, 94, 0.45);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

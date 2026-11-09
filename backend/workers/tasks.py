@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from backend.database.connection import SessionLocal
 from backend.database.models import (
-    ResearchJob, Appearance, Source, AppearanceAnalysis, CollectionLog
+    ResearchJob, Appearance, Source, AppearanceAnalysis, CollectionLog, SocialProfile
 )
 from backend.modules.persons.service import build_identity_context
 from backend.modules.discovery.service import DiscoveryService
@@ -146,6 +146,38 @@ def execute_research_pipeline(job_id: str):
                     model_name=analysis_res.model_name
                 )
                 db.add(analysis_entry)
+
+            # Auto-link discovered social profile accounts if not already linked
+            if identity_status in ("VERIFIED", "LIKELY_MATCH"):
+                target_url = primary.canonical_url.lower()
+                if "linkedin.com/in/" in target_url:
+                    existing_li = db.query(SocialProfile).filter(
+                        SocialProfile.person_id == job.person_id,
+                        SocialProfile.platform == "linkedin"
+                    ).first()
+                    if not existing_li:
+                        from backend.modules.persons.service import _extract_username_from_url
+                        db.add(SocialProfile(
+                            person_id=job.person_id,
+                            platform="linkedin",
+                            username=_extract_username_from_url(primary.canonical_url, "linkedin"),
+                            profile_url=primary.canonical_url,
+                            verification_status="VERIFIED"
+                        ))
+                elif "instagram.com/" in target_url and not any(p in target_url for p in ("/p/", "/reel/", "/tv/")):
+                    existing_ig = db.query(SocialProfile).filter(
+                        SocialProfile.person_id == job.person_id,
+                        SocialProfile.platform == "instagram"
+                    ).first()
+                    if not existing_ig:
+                        from backend.modules.persons.service import _extract_username_from_url
+                        db.add(SocialProfile(
+                            person_id=job.person_id,
+                            platform="instagram",
+                            username=_extract_username_from_url(primary.canonical_url, "instagram"),
+                            profile_url=primary.canonical_url,
+                            verification_status="VERIFIED"
+                        ))
 
             saved_appearances_count += 1
 
