@@ -1,7 +1,8 @@
-import React from 'react';
-import { ExternalLink, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ExternalLink, Trash2, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 
 export default function AppearanceCard({ item, onDelete }) {
+  const [expanded, setExpanded] = useState(false);
   const badgeTypeClass =
     item.appearance_type === 'PODCAST'
       ? 'badge-podcast'
@@ -72,6 +73,30 @@ export default function AppearanceCard({ item, onDelete }) {
         <p className="text-sm text-slate-300 leading-relaxed bg-slate-950/40 p-3 rounded-lg border border-slate-800">
           {item.analysis.summary}
         </p>
+      )}
+
+      {item.analysis?.key_points && item.analysis.key_points.length > 0 && (
+        <div className="bg-slate-950/40 rounded-lg border border-slate-800/80 overflow-hidden">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full flex items-center justify-between p-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+          >
+            <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-cyan-400">
+              <CheckCircle2 size={13} />
+              <span>Key Points & Takeaways ({item.analysis.key_points.length})</span>
+            </span>
+            {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+          {expanded && (
+            <ul className="px-3.5 pb-3 pt-1 space-y-1.5 border-t border-slate-800/60 text-xs text-slate-300 list-disc list-inside">
+              {item.analysis.key_points.map((kp, idx) => (
+                <li key={idx} className="leading-relaxed">
+                  {kp}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-slate-800/80">
