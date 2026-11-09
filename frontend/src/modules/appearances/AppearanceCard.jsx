@@ -88,6 +88,11 @@ export default function AppearanceCard({ item, onDelete }) {
             #{topic}
           </span>
         ))}
+        {item.analysis?.model_name && (
+          <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800/40 text-slate-400 border border-slate-800 font-mono ml-auto">
+            {item.analysis.model_name}
+          </span>
+        )}
       </div>
     </div>
   );
