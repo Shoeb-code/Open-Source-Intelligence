@@ -19,12 +19,28 @@ class TranscriptExtractor:
 
         try:
             # Check for YouTubeTranscriptApi classmethod vs modern instance fetch
+            preferred_languages = ["en", "en-US", "en-GB", "en-IN", "hi", "hi-Latn"]
             if hasattr(YouTubeTranscriptApi, "get_transcript"):
-                transcript_entries = YouTubeTranscriptApi.get_transcript(video_id)
+                try:
+                    transcript_entries = YouTubeTranscriptApi.get_transcript(
+                        video_id, languages=preferred_languages
+                    )
+                except Exception:
+                    transcript_entries = YouTubeTranscriptApi.get_transcript(video_id)
             else:
                 yt_api = YouTubeTranscriptApi()
-                fetched = yt_api.fetch(video_id)
-                transcript_entries = fetched.to_raw_data() if hasattr(fetched, "to_raw_data") else fetched
+                try:
+                    fetched = yt_api.fetch(video_id, languages=preferred_languages)
+                    transcript_entries = fetched.to_raw_data() if hasattr(fetched, "to_raw_data") else fetched
+                except Exception:
+                    # Fallback to any transcript available on the video
+                    transcript_list = yt_api.list(video_id)
+                    first_transcript = next(iter(transcript_list), None)
+                    if first_transcript:
+                        fetched = first_transcript.fetch()
+                        transcript_entries = fetched.to_raw_data() if hasattr(fetched, "to_raw_data") else fetched
+                    else:
+                        raise
 
             formatted_lines = []
             for entry in transcript_entries:

@@ -109,16 +109,39 @@ def build_identity_context(db: Session, person_id: str) -> Optional[IdentityCont
             usernames.append(prof.username)
         profile_urls[prof.platform] = prof.profile_url
 
-    # Infer organizations from biography/profession if present
+    # Infer organizations from profession and biography
     organizations = []
-    if person.profession and " at " in person.profession:
-        org = person.profession.split(" at ")[-1].strip()
-        if org:
-            organizations.append(org)
-    elif person.profession and " @ " in person.profession:
-        org = person.profession.split(" @ ")[-1].strip()
-        if org:
-            organizations.append(org)
+    if person.profession:
+        prof = person.profession.strip()
+        matched_delimiter = False
+        for delim in [" at ", " @ ", " of ", ", ", " - ", " | "]:
+            if delim in prof.lower():
+                idx = prof.lower().find(delim)
+                org = prof[idx + len(delim):].strip()
+                if org and org not in organizations:
+                    organizations.append(org)
+                matched_delimiter = True
+                break
+
+        # If no delimiter was used, check if the string directly names a company/firm
+        if not matched_delimiter:
+            company_indicators = [
+                "company", "amc", "group", "ltd", "limited", "inc", "corp",
+                "fund", "funds", "capital", "wealth", "ventures", "pvt",
+                "technologies", "tech", "partners", "bank", "financial", "firm"
+            ]
+            if any(term in prof.lower() for term in company_indicators) and prof not in organizations:
+                organizations.append(prof)
+
+    # Check biography for prominent organizations
+    if person.biography:
+        bio = person.biography
+        for delim in [" of ", " at ", " @ ", " co-founder of ", " founder of "]:
+            if delim in bio.lower():
+                idx = bio.lower().find(delim)
+                snippet = bio[idx + len(delim):].split(".")[0].split(",")[0].strip()
+                if 3 < len(snippet) < 60 and snippet not in organizations:
+                    organizations.append(snippet)
 
     return IdentityContext(
         person_id=person.id,
