@@ -30,6 +30,8 @@ def get_appearances_by_person(
     query = db.query(Appearance).filter(Appearance.person_id == person_id)
     if identity_status:
         query = query.filter(Appearance.identity_status == identity_status)
+    else:
+        query = query.filter(Appearance.identity_status != "REJECTED")
     return query.order_by(Appearance.published_at.desc(), Appearance.created_at.desc()).all()
 
 
@@ -37,7 +39,7 @@ def get_sources_by_person(db: Session, person_id: str) -> List[Source]:
     return (
         db.query(Source)
         .join(Appearance, Source.appearance_id == Appearance.id)
-        .filter(Appearance.person_id == person_id)
+        .filter(Appearance.person_id == person_id, Appearance.identity_status != "REJECTED")
         .all()
     )
 
@@ -58,7 +60,7 @@ def generate_report_for_person(db: Session, person_id: str) -> Optional[Dict[str
         return None
     appearances = (
         db.query(Appearance)
-        .filter(Appearance.person_id == person_id)
+        .filter(Appearance.person_id == person_id, Appearance.identity_status != "REJECTED")
         .all()
     )
     return ReportGenerator.generate_report(person, appearances)

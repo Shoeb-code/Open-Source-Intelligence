@@ -29,6 +29,12 @@ export default function RegisterTargetModal({ isOpen, onClose, onTargetRegistere
         instagram_url: instagram.trim() || null,
       });
 
+      setName('');
+      setProfession('');
+      setBio('');
+      setLinkedin('');
+      setYoutube('');
+      setInstagram('');
       onTargetRegistered(newPerson);
       onClose();
     } catch (err) {

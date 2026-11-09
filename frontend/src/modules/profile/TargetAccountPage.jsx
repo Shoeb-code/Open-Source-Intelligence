@@ -35,29 +35,34 @@ export default function TargetAccountPage({
     (p) => !['linkedin', 'instagram', 'youtube'].includes(p.platform)
   ) || [];
 
+  // Only count verified or non-rejected appearances
+  const validAppearances = useMemo(() => {
+    return appearances.filter((a) => a.identity_status !== 'REJECTED');
+  }, [appearances]);
+
   // Grouped Appearance Counts
-  const linkedinCount = appearances.filter(
+  const linkedinCount = validAppearances.filter(
     (a) =>
       a.appearance_type === 'LINKEDIN_POST' ||
       a.appearance_type === 'ARTICLE' ||
       (a.sources?.[0]?.source_url || '').includes('linkedin.com')
   ).length;
 
-  const instagramCount = appearances.filter(
+  const instagramCount = validAppearances.filter(
     (a) =>
       a.appearance_type === 'INSTAGRAM_POST' ||
       a.appearance_type === 'INSTAGRAM_REEL' ||
       (a.sources?.[0]?.source_url || '').includes('instagram.com')
   ).length;
 
-  const youtubeCount = appearances.filter(
+  const youtubeCount = validAppearances.filter(
     (a) =>
       a.appearance_type === 'PODCAST' ||
       a.appearance_type === 'INTERVIEW' ||
       (a.sources?.[0]?.source_url || '').includes('youtube.com')
   ).length;
 
-  const newsCount = appearances.filter(
+  const newsCount = validAppearances.filter(
     (a) =>
       a.appearance_type === 'NEWS_ARTICLE' ||
       (a.sources?.[0]?.source_url || '').includes('news')
@@ -65,7 +70,7 @@ export default function TargetAccountPage({
 
   // Filtered appearances based on active tab and search input
   const filteredAppearances = useMemo(() => {
-    return appearances.filter((app) => {
+    return validAppearances.filter((app) => {
       // 1. Media Type Filter
       if (activeMediaFilter === 'LINKEDIN') {
         const isLi =
@@ -289,7 +294,7 @@ export default function TargetAccountPage({
               <span>Extracted Social Posts, Articles & Appearances</span>
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Showing {filteredAppearances.length} of {appearances.length} total items
+              Showing {filteredAppearances.length} of {validAppearances.length} verified appearances
             </p>
           </div>
 
@@ -309,7 +314,7 @@ export default function TargetAccountPage({
         {/* Filter Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-4 scrollbar-none">
           {[
-            { id: 'ALL', label: 'All Activity', count: appearances.length },
+            { id: 'ALL', label: 'All Activity', count: validAppearances.length },
             { id: 'LINKEDIN', label: 'LinkedIn Posts & Articles', count: linkedinCount },
             { id: 'INSTAGRAM', label: 'Instagram Posts & Reels', count: instagramCount },
             { id: 'YOUTUBE', label: 'YouTube & Podcasts', count: youtubeCount },

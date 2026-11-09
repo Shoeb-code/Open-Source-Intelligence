@@ -6,7 +6,7 @@ export default function AppearanceList({ appearances, onDeleteAppearance }) {
   const [filter, setFilter] = useState('ALL');
 
   const filtered = appearances.filter((item) => {
-    if (filter === 'ALL') return true;
+    if (filter === 'ALL') return item.identity_status !== 'REJECTED';
     return item.identity_status === filter;
   });
 

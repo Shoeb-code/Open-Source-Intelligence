@@ -43,6 +43,7 @@ export default function App() {
   const [activeJobId, setActiveJobId] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
   const [isResearching, setIsResearching] = useState(false);
+  const [researchingPersonId, setResearchingPersonId] = useState(null);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState('account'); // account, overview, appearances, timeline, sources
@@ -91,6 +92,17 @@ export default function App() {
     }
   }
 
+  // Handle switching target person
+  function handleSelectPerson(personId) {
+    if (personId === selectedPersonId) return;
+    // Clear intelligence data immediately to prevent cross-person data bleeding
+    setReportData(null);
+    setAppearances([]);
+    setTimeline([]);
+    setSources([]);
+    setSelectedPersonId(personId);
+  }
+
   // 2. Load Selected Target Data (ONLY re-runs when the user selects a different target)
   useEffect(() => {
     if (!selectedPersonId) {
@@ -115,6 +127,7 @@ export default function App() {
   }, [persons, selectedPersonId]);
 
   async function fetchPersonIntelligence(personId) {
+    if (!personId) return;
     setLoadingData(true);
     try {
       const [rep, apps, tm, srcs] = await Promise.allSettled([
@@ -124,10 +137,16 @@ export default function App() {
         api.getSources(personId),
       ]);
 
-      if (rep.status === 'fulfilled') setReportData(rep.value);
-      if (apps.status === 'fulfilled') setAppearances(apps.value);
-      if (tm.status === 'fulfilled') setTimeline(tm.value);
-      if (srcs.status === 'fulfilled') setSources(srcs.value);
+      // Guard: Only apply results if the user has not switched to another person while waiting
+      setSelectedPersonId((currId) => {
+        if (currId === personId) {
+          setReportData(rep.status === 'fulfilled' ? rep.value : null);
+          setAppearances(apps.status === 'fulfilled' ? apps.value : []);
+          setTimeline(tm.status === 'fulfilled' ? tm.value : []);
+          setSources(srcs.status === 'fulfilled' ? srcs.value : []);
+        }
+        return currId;
+      });
     } catch (err) {
       console.error('Error loading person intelligence:', err);
     } finally {
@@ -140,12 +159,14 @@ export default function App() {
     if (!selectedPersonId || isResearching) return;
     try {
       setIsResearching(true);
+      setResearchingPersonId(selectedPersonId);
       const res = await api.startResearch(selectedPersonId);
       setActiveJobId(res.id);
       setJobStatus(res);
     } catch (err) {
       alert(`Failed to start research: ${err.message}`);
       setIsResearching(false);
+      setResearchingPersonId(null);
     }
   }
 
@@ -161,7 +182,11 @@ export default function App() {
         if (status.status === 'COMPLETED' || status.status === 'FAILED') {
           setIsResearching(false);
           setActiveJobId(null);
-          fetchPersonIntelligence(selectedPersonId);
+          const targetToRefresh = researchingPersonId || selectedPersonId;
+          setResearchingPersonId(null);
+          if (targetToRefresh) {
+            fetchPersonIntelligence(targetToRefresh);
+          }
         }
       } catch (err) {
         console.error('Polling error:', err);
@@ -169,7 +194,7 @@ export default function App() {
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [activeJobId, isResearching, selectedPersonId]);
+  }, [activeJobId, isResearching, researchingPersonId, selectedPersonId]);
 
   // 5. Delete Person
   async function handleDeletePerson(personId) {
@@ -263,7 +288,7 @@ export default function App() {
         <TargetSelector
           persons={persons}
           selectedPersonId={selectedPersonId}
-          onSelectPerson={setSelectedPersonId}
+          onSelectPerson={handleSelectPerson}
           onOpenRegisterModal={() => setShowRegisterModal(true)}
           onDeletePerson={handleDeletePerson}
           mobileOpen={mobileMenuOpen}
@@ -369,12 +394,12 @@ export default function App() {
                 </div>
               </div>
 
-              {/* --- REAL-TIME RESEARCH PROGRESS BAR (IF RUNNING) --- */}
-              {isResearching && (
+              {/* --- REAL-TIME RESEARCH PROGRESS BAR (IF RUNNING FOR THIS TARGET) --- */}
+              {isResearching && researchingPersonId === selectedPerson?.id && (
                 <div className="p-4 bg-cyan-950/20 border-b border-cyan-500/30">
                   <div className="flex justify-between items-center text-xs font-semibold mb-1.5">
                     <span className="text-cyan-400">
-                      Discovery Pipeline in Progress: {jobStatus?.progress || 10}%
+                      Discovery Pipeline in Progress for {selectedPerson.name}: {jobStatus?.progress || 10}%
                     </span>
                     <span className="text-slate-400 font-mono uppercase">
                       Status: {jobStatus?.status || 'RUNNING'}
@@ -605,7 +630,13 @@ export default function App() {
         onClose={() => setShowRegisterModal(false)}
         onTargetRegistered={(newPerson) => {
           setPersons((prev) => [newPerson, ...prev]);
+          setAppearances([]);
+          setReportData(null);
+          setTimeline([]);
+          setSources([]);
           setSelectedPersonId(newPerson.id);
+          setSelectedPerson(newPerson);
+          setActiveTab('account');
         }}
       />
 

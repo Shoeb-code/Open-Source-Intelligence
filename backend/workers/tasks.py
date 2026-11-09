@@ -103,6 +103,25 @@ def execute_research_pipeline(job_id: str):
             # Verify identity
             identity_status, confidence_score, evidence_signals = IdentityVerifier.verify(context, primary)
 
+            # DISCARD REJECTED / UNRELATED RESULTS:
+            # If the candidate was rejected (belongs to a different person or unrelated event), DO NOT store it!
+            if identity_status == "REJECTED":
+                logger.info(f"Skipping rejected appearance for {context.name}: '{primary.title}' (score={confidence_score})")
+                continue
+
+            # Skip duplicates if an appearance with the same canonical URL already exists for this person
+            existing_app = (
+                db.query(Appearance)
+                .join(Source)
+                .filter(
+                    Appearance.person_id == job.person_id,
+                    Source.canonical_url == primary.canonical_url
+                )
+                .first()
+            )
+            if existing_app:
+                continue
+
             # Classify appearance category
             appearance_type = AppearanceClassifier.classify(primary)
 
