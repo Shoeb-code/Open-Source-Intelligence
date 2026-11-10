@@ -38,43 +38,43 @@ export default function RegisterTargetModal({ isOpen, onClose, onTargetRegistere
       onTargetRegistered(newPerson);
       onClose();
     } catch (err) {
-      setError(err.message || 'Failed to register target');
+      setError(err.message || 'Failed to add person');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
-      <div className="glass-panel w-full max-w-lg rounded-2xl p-4 sm:p-6 bg-slate-900 border border-slate-700/80 shadow-2xl max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="w-full max-w-lg rounded-2xl p-5 sm:p-6 bg-white border border-slate-200 shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-5">
           <div className="flex items-center gap-2">
-            <UserPlus size={20} className="text-cyan-400" />
-            <h3 className="text-lg font-bold text-slate-100">Register Target for Intelligence</h3>
+            <UserPlus size={20} className="text-blue-600" />
+            <h3 className="text-lg font-bold text-slate-900">Add a Person to Research</h3>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-200 transition-colors"
+            className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-lg hover:bg-slate-100"
           >
             <X size={20} />
           </button>
         </div>
 
         {error && (
-          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs mb-4">
+          <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs mb-4">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
               Full Name *
             </label>
             <input
               type="text"
               required
-              placeholder="e.g. Sundar Pichai"
+              placeholder="e.g. Madhu Lunawat"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="input-field"
@@ -82,12 +82,12 @@ export default function RegisterTargetModal({ isOpen, onClose, onTargetRegistere
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-              Profession & Affiliation
+            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
+              Company or Role
             </label>
             <input
               type="text"
-              placeholder="e.g. CEO at Alphabet and Google"
+              placeholder="e.g. Founder at The Wealth Company"
               value={profession}
               onChange={(e) => setProfession(e.target.value)}
               className="input-field"
@@ -95,21 +95,21 @@ export default function RegisterTargetModal({ isOpen, onClose, onTargetRegistere
           </div>
 
           <div>
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-              Biography / Context
+            <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
+              Short Bio / Notes
             </label>
             <textarea
               rows={2}
-              placeholder="Short professional summary or background..."
+              placeholder="Optional background notes..."
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               className="input-field resize-y"
             />
           </div>
 
-          <div className="border-t border-slate-800 pt-3">
-            <p className="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-2">
-              Known Social & Channel Profiles (Optional)
+          <div className="border-t border-slate-200 pt-3">
+            <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-2">
+              Social Links (Optional)
             </p>
 
             <div className="flex flex-col gap-2">
@@ -137,12 +137,12 @@ export default function RegisterTargetModal({ isOpen, onClose, onTargetRegistere
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-slate-800">
+          <div className="flex justify-end gap-3 mt-4 pt-3 border-t border-slate-200">
             <button type="button" onClick={onClose} className="btn btn-secondary">
               Cancel
             </button>
             <button type="submit" disabled={loading} className="btn btn-primary">
-              {loading ? 'Registering...' : 'Register Target'}
+              {loading ? 'Adding...' : 'Add Person'}
             </button>
           </div>
         </form>

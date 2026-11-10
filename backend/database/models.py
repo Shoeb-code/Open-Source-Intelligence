@@ -47,6 +47,7 @@ class Person(Base):
     social_profiles = relationship("SocialProfile", back_populates="person", cascade="all, delete-orphan")
     research_jobs = relationship("ResearchJob", back_populates="person", cascade="all, delete-orphan")
     appearances = relationship("Appearance", back_populates="person", cascade="all, delete-orphan")
+    insights_reports = relationship("PersonInsightsReport", back_populates="person", cascade="all, delete-orphan")
 
 
 class SocialProfile(Base):
@@ -148,4 +149,20 @@ class CollectionLog(Base):
 
     # Relationships
     job = relationship("ResearchJob", back_populates="logs")
+
+
+class PersonInsightsReport(Base):
+    __tablename__ = "person_insights_reports"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid, index=True)
+    person_id = Column(String(36), ForeignKey("persons.id", ondelete="CASCADE"), nullable=False, index=True)
+    model_name = Column(String(100), nullable=False)
+    prompt_version = Column(String(50), nullable=False)
+    generation_time_seconds = Column(Float, nullable=False, default=0.0)
+    source_count = Column(Integer, nullable=False, default=0)
+    report_data = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=utc_now, index=True)
+
+    # Relationships
+    person = relationship("Person", back_populates="insights_reports")
 

@@ -1,9 +1,10 @@
 import React from 'react';
-import { User, UserPlus, Trash2, X } from 'lucide-react';
+import { User, UserPlus, Trash2, X, RotateCw } from 'lucide-react';
 
 export default function TargetSelector({
   persons,
   selectedPersonId,
+  researchingPersonIds = [],
   onSelectPerson,
   onOpenRegisterModal,
   onDeletePerson,
@@ -12,28 +13,26 @@ export default function TargetSelector({
 }) {
   return (
     <>
-      {/* Mobile Backdrop Overlay */}
       {mobileOpen && (
         <div
           onClick={onCloseMobile}
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          className="fixed inset-0 bg-slate-900/35 backdrop-blur-sm z-40 md:hidden transition-opacity"
         />
       )}
 
-      {/* Responsive Sidebar / Drawer */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 w-72 sm:w-80 border-r border-slate-800 bg-slate-900/98 backdrop-blur-xl flex flex-col shrink-0 transition-transform duration-300 ease-in-out
+          fixed inset-y-0 left-0 z-50 w-72 sm:w-80 border-r border-slate-200 bg-white flex flex-col shrink-0 transition-transform duration-300 ease-in-out
           md:static md:translate-x-0 md:z-auto
-          ${mobileOpen ? 'translate-x-0 shadow-2xl shadow-cyan-500/10' : '-translate-x-full'}
+          ${mobileOpen ? 'translate-x-0 shadow-xl' : '-translate-x-full'}
         `}
       >
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-200 flex items-center justify-between bg-white">
           <div className="flex items-center gap-2">
-            <User size={18} className="text-cyan-400" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Target Profiles
+            <User size={18} className="text-blue-600" />
+            <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+              People ({persons.length})
             </h2>
           </div>
           <div className="flex items-center gap-2">
@@ -42,17 +41,16 @@ export default function TargetSelector({
                 if (onCloseMobile) onCloseMobile();
                 onOpenRegisterModal();
               }}
-              className="btn btn-primary text-xs py-1.5 px-2.5 sm:px-3"
+              className="btn btn-primary text-xs py-1.5 px-3"
             >
               <UserPlus size={13} />
-              <span>New</span>
+              <span>Add Person</span>
             </button>
 
-            {/* Mobile Close Button */}
             {onCloseMobile && (
               <button
                 onClick={onCloseMobile}
-                className="md:hidden text-slate-400 hover:text-white p-1 rounded-lg border border-slate-800 bg-slate-950"
+                className="md:hidden text-slate-500 hover:text-slate-900 p-1 rounded-lg border border-slate-200 bg-slate-50"
               >
                 <X size={16} />
               </button>
@@ -60,14 +58,14 @@ export default function TargetSelector({
           </div>
         </div>
 
-        {/* List of Persons */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        {/* List of People */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5 bg-white">
           {persons.length === 0 ? (
             <div className="py-12 px-4 text-center text-slate-500">
-              <User size={36} className="mx-auto mb-3 opacity-30 text-slate-400" />
-              <p className="text-xs font-medium text-slate-400">No persons added yet.</p>
-              <p className="text-[11px] text-slate-500 mt-1">
-                Add someone you want to search public appearances for.
+              <User size={36} className="mx-auto mb-3 opacity-35 text-slate-400" />
+              <p className="text-xs font-semibold text-slate-700">No people added yet.</p>
+              <p className="text-xs text-slate-500 mt-1">
+                Add someone to research their public profile and insights.
               </p>
               <button
                 onClick={() => {
@@ -82,6 +80,7 @@ export default function TargetSelector({
           ) : (
             persons.map((p) => {
               const isSelected = p.id === selectedPersonId;
+              const isTargetSearching = researchingPersonIds.includes(p.id);
               return (
                 <div
                   key={p.id}
@@ -89,19 +88,25 @@ export default function TargetSelector({
                     onSelectPerson(p.id);
                     if (onCloseMobile) onCloseMobile();
                   }}
-                  className={`p-3 rounded-lg cursor-pointer transition-all border group relative ${
+                  className={`p-3 rounded-xl cursor-pointer transition-all border group relative ${
                     isSelected
-                      ? 'border-cyan-500/60 bg-slate-800/90 shadow-md shadow-cyan-500/5'
-                      : 'border-transparent hover:bg-slate-800/40 hover:border-slate-800'
+                      ? 'border-blue-300 bg-blue-50/80 shadow-xs'
+                      : 'border-slate-100 bg-white hover:bg-slate-50 hover:border-slate-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <h3 className={`text-sm font-semibold truncate ${isSelected ? 'text-sky-400' : 'text-slate-200'}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className={`text-sm font-semibold truncate ${isSelected ? 'text-blue-700' : 'text-slate-900'}`}>
                       {p.name}
                     </h3>
-                    <div className="flex items-center gap-2">
-                      {isSelected && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#06b6d4]" />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isTargetSearching && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                          <RotateCw size={10} className="animate-spin" />
+                          <span>Searching</span>
+                        </span>
+                      )}
+                      {isSelected && !isTargetSearching && (
+                        <span className="w-2 h-2 rounded-full bg-blue-600" />
                       )}
                       {onDeletePerson && (
                         <button
@@ -111,8 +116,8 @@ export default function TargetSelector({
                               onDeletePerson(p.id);
                             }
                           }}
-                          className="opacity-70 md:opacity-0 group-hover:opacity-100 text-slate-500 hover:text-rose-400 transition-opacity p-0.5 rounded"
-                          title="Delete target"
+                          className="opacity-70 md:opacity-0 group-hover:opacity-100 text-slate-400 hover:text-rose-600 transition-opacity p-0.5 rounded"
+                          title="Delete person"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -120,33 +125,35 @@ export default function TargetSelector({
                     </div>
                   </div>
 
-                  <p className="text-xs text-slate-400 mt-0.5 truncate">
+                  <p className="text-xs text-slate-500 mt-0.5 truncate">
                     {p.profession || 'Independent Professional'}
                   </p>
 
-                  <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                    {p.social_profiles?.map((sp) => {
-                      const isLi = sp.platform === 'linkedin';
-                      const isIg = sp.platform === 'instagram';
-                      const isYt = sp.platform === 'youtube';
-                      const badgeColor = isLi
-                        ? 'text-sky-400 border-sky-500/30 bg-sky-500/10'
-                        : isIg
-                        ? 'text-pink-400 border-pink-500/30 bg-pink-500/10'
-                        : isYt
-                        ? 'text-rose-400 border-rose-500/30 bg-rose-500/10'
-                        : 'text-slate-400 border-slate-800 bg-slate-950/80';
+                  {p.social_profiles?.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      {p.social_profiles.map((sp) => {
+                        const isLi = sp.platform === 'linkedin';
+                        const isIg = sp.platform === 'instagram';
+                        const isYt = sp.platform === 'youtube';
+                        const badgeColor = isLi
+                          ? 'text-blue-700 border-blue-200 bg-blue-50'
+                          : isIg
+                          ? 'text-pink-700 border-pink-200 bg-pink-50'
+                          : isYt
+                          ? 'text-rose-700 border-rose-200 bg-rose-50'
+                          : 'text-slate-600 border-slate-200 bg-slate-50';
 
-                      return (
-                        <span
-                          key={sp.id}
-                          className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${badgeColor}`}
-                        >
-                          {sp.platform}
-                        </span>
-                      );
-                    })}
-                  </div>
+                        return (
+                          <span
+                            key={sp.id}
+                            className={`text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded border ${badgeColor}`}
+                          >
+                            {sp.platform}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })

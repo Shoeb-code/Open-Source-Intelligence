@@ -3,9 +3,9 @@ import { TrendingUp } from 'lucide-react';
 
 export default function TopicCloud({ topics }) {
   return (
-    <div className="glass-panel p-6 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
-      <h4 className="text-sm font-semibold text-slate-200 mb-4 flex items-center gap-2">
-        <TrendingUp size={16} className="text-cyan-400" />
+    <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+      <h4 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+        <TrendingUp size={16} className="text-blue-600" />
         <span>Recurring Topics & Themes</span>
       </h4>
       <div className="flex flex-wrap gap-2">
@@ -13,10 +13,10 @@ export default function TopicCloud({ topics }) {
           topics.map((t, idx) => (
             <span
               key={idx}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800/80 border border-slate-700 text-slate-300 hover:border-cyan-500/50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-50 border border-slate-200 text-slate-700 hover:border-blue-300 transition-colors"
             >
               <span>{t.topic}</span>
-              <span className="text-cyan-400 font-semibold text-[11px]">{t.count}</span>
+              <span className="text-blue-700 font-semibold text-[11px]">{t.count}</span>
             </span>
           ))
         ) : (

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { ExternalLink, Trash2, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ExternalLink, ChevronDown, ChevronUp, CheckCircle2, Trash2 } from 'lucide-react';
 
 export default function AppearanceCard({ item, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+
   const badgeTypeClass =
     item.appearance_type === 'PODCAST'
       ? 'badge-podcast'
@@ -10,12 +11,12 @@ export default function AppearanceCard({ item, onDelete }) {
       ? 'badge-interview'
       : item.appearance_type === 'CONFERENCE'
       ? 'badge-conference'
-      : item.appearance_type === 'LINKEDIN_POST'
-      ? 'badge-linkedin'
-      : item.appearance_type === 'INSTAGRAM_REEL'
-      ? 'badge-reel'
       : item.appearance_type === 'INSTAGRAM_POST'
       ? 'badge-instagram'
+      : item.appearance_type === 'INSTAGRAM_REEL'
+      ? 'badge-reel'
+      : item.appearance_type === 'LINKEDIN_POST'
+      ? 'badge-linkedin'
       : 'badge-news';
 
   const badgeStatusClass =
@@ -26,23 +27,23 @@ export default function AppearanceCard({ item, onDelete }) {
       : 'badge-review';
 
   return (
-    <div className="glass-panel p-5 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md flex flex-col gap-3 transition-all hover:border-slate-600">
+    <div className="bg-white p-5 rounded-xl border border-slate-200 flex flex-col gap-3 transition-all hover:border-slate-300 shadow-xs">
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2 mb-1.5">
             <span className={`badge ${badgeTypeClass}`}>{item.appearance_type}</span>
             <span className={`badge ${badgeStatusClass}`}>{item.identity_status}</span>
-            <span className="text-xs text-slate-400 font-mono">
+            <span className="text-xs text-slate-500 font-mono">
               Score: {Math.round(item.confidence_score * 100)}%
             </span>
           </div>
 
-          <h4 className="text-base font-semibold text-slate-100 hover:text-cyan-400 transition-colors">
+          <h4 className="text-base font-semibold text-slate-900">
             {item.title}
           </h4>
 
-          <p className="text-xs text-slate-400 mt-1">
-            Publisher: <span className="text-slate-300 font-medium">{item.publisher || 'Web / Media'}</span> •{' '}
+          <p className="text-xs text-slate-500 mt-1">
+            Publisher: <span className="text-slate-700 font-medium">{item.publisher || 'Web / Media'}</span> •{' '}
             {item.published_at ? new Date(item.published_at).toLocaleDateString() : 'Recent'}
           </p>
         </div>
@@ -66,7 +67,7 @@ export default function AppearanceCard({ item, onDelete }) {
                   onDelete(item.id);
                 }
               }}
-              className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg border border-transparent hover:border-rose-500/30 transition-all"
+              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg border border-transparent hover:border-rose-200 transition-all"
               title="Delete appearance"
             >
               <Trash2 size={14} />
@@ -76,25 +77,25 @@ export default function AppearanceCard({ item, onDelete }) {
       </div>
 
       {item.analysis?.summary && (
-        <p className="text-sm text-slate-300 leading-relaxed bg-slate-950/40 p-3 rounded-lg border border-slate-800">
+        <p className="text-sm text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200">
           {item.analysis.summary}
         </p>
       )}
 
       {item.analysis?.key_points && item.analysis.key_points.length > 0 && (
-        <div className="bg-slate-950/40 rounded-lg border border-slate-800/80 overflow-hidden">
+        <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="w-full flex items-center justify-between p-2.5 text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+            className="w-full flex items-center justify-between p-2.5 text-xs font-semibold text-slate-700 hover:text-slate-900 transition-colors"
           >
-            <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-cyan-400">
+            <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-blue-700">
               <CheckCircle2 size={13} />
-              <span>Key Points & Takeaways ({item.analysis.key_points.length})</span>
+              <span>Key Points ({item.analysis.key_points.length})</span>
             </span>
             {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
           </button>
           {expanded && (
-            <ul className="px-3.5 pb-3 pt-1 space-y-1.5 border-t border-slate-800/60 text-xs text-slate-300 list-disc list-inside">
+            <ul className="px-3.5 pb-3 pt-1 space-y-1.5 border-t border-slate-200 text-xs text-slate-700 list-disc list-inside bg-white">
               {item.analysis.key_points.map((kp, idx) => (
                 <li key={idx} className="leading-relaxed">
                   {kp}
@@ -105,22 +106,22 @@ export default function AppearanceCard({ item, onDelete }) {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 items-center pt-1 border-t border-slate-800/80">
+      <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-slate-100">
         {item.analysis?.person_role && (
-          <span className="inline-flex items-center text-xs px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-400 font-semibold tracking-wide">
+          <span className="inline-flex items-center text-xs px-2.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-semibold">
             Role: {item.analysis.person_role}
           </span>
         )}
         {item.analysis?.topics?.map((topic, i) => (
           <span
             key={i}
-            className="text-xs px-2.5 py-0.5 rounded bg-slate-800/60 text-slate-400 border border-slate-700/50"
+            className="text-xs px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200"
           >
             #{topic}
           </span>
         ))}
         {item.analysis?.model_name && (
-          <span className="text-[11px] px-2 py-0.5 rounded bg-slate-800/40 text-slate-400 border border-slate-800 font-mono ml-auto">
+          <span className="text-[11px] px-2 py-0.5 rounded bg-slate-50 text-slate-500 border border-slate-200 font-mono ml-auto">
             {item.analysis.model_name}
           </span>
         )}

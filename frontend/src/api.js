@@ -141,4 +141,23 @@ export const api = {
     }
     return res.json();
   },
+
+  async getInsights(personId) {
+    const res = await fetch(`${API_BASE}/persons/${personId}/insights`);
+    if (!res.ok) throw new Error('Failed to fetch AI insights');
+    return res.json();
+  },
+
+  async generateInsights(personId, { focus_notes = null } = {}) {
+    const res = await fetch(`${API_BASE}/persons/${personId}/generate-insights`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ focus_notes }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to generate AI insights');
+    }
+    return res.json();
+  },
 };

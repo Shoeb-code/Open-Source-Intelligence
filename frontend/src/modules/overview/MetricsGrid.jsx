@@ -10,45 +10,41 @@ export default function MetricsGrid({ reportData, appearances, sources }) {
   const topFormat = appearances[0]?.appearance_type ? appearances[0].appearance_type.replace('_', ' ') : 'None yet';
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-      {/* Metric 1: Total Discovered */}
-      <div className="glass-panel p-3.5 sm:p-5 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
-        <div className="flex justify-between items-center text-slate-400 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
+        <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase tracking-wider">
           <span className="truncate">Total Found</span>
           <Search size={15} className="text-slate-400 shrink-0 ml-1" />
         </div>
-        <div className="text-2xl sm:text-3xl font-bold mt-1.5 sm:mt-2 text-slate-100">{totalDiscovered}</div>
-        <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Public appearances</p>
+        <div className="text-2xl sm:text-3xl font-bold mt-2 text-slate-900">{totalDiscovered}</div>
+        <p className="text-xs text-slate-500 mt-1 truncate">Public appearances</p>
       </div>
 
-      {/* Metric 2: Verified Matches */}
-      <div className="glass-panel p-3.5 sm:p-5 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
-        <div className="flex justify-between items-center text-slate-400 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
+        <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase tracking-wider">
           <span className="truncate">Verified</span>
-          <ShieldCheck size={15} className="text-emerald-400 shrink-0 ml-1" />
+          <ShieldCheck size={15} className="text-emerald-600 shrink-0 ml-1" />
         </div>
-        <div className="text-2xl sm:text-3xl font-bold mt-1.5 sm:mt-2 text-emerald-400">{verifiedCount}</div>
-        <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Score &gt; 80%</p>
+        <div className="text-2xl sm:text-3xl font-bold mt-2 text-emerald-700">{verifiedCount}</div>
+        <p className="text-xs text-slate-500 mt-1 truncate">Score &gt; 80%</p>
       </div>
 
-      {/* Metric 3: Distinct Sources */}
-      <div className="glass-panel p-3.5 sm:p-5 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
-        <div className="flex justify-between items-center text-slate-400 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
+        <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase tracking-wider">
           <span className="truncate">Sources</span>
-          <Globe size={15} className="text-blue-400 shrink-0 ml-1" />
+          <Globe size={15} className="text-blue-600 shrink-0 ml-1" />
         </div>
-        <div className="text-2xl sm:text-3xl font-bold mt-1.5 sm:mt-2 text-blue-400">{distinctSources}</div>
-        <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Unique domains</p>
+        <div className="text-2xl sm:text-3xl font-bold mt-2 text-blue-700">{distinctSources}</div>
+        <p className="text-xs text-slate-500 mt-1 truncate">Unique links</p>
       </div>
 
-      {/* Metric 4: Top Medium */}
-      <div className="glass-panel p-3.5 sm:p-5 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
-        <div className="flex justify-between items-center text-slate-400 text-[10px] sm:text-xs font-semibold uppercase tracking-wider">
-          <span className="truncate">Top Medium</span>
-          <Video size={15} className="text-pink-400 shrink-0 ml-1" />
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
+        <div className="flex justify-between items-center text-slate-500 text-xs font-semibold uppercase tracking-wider">
+          <span className="truncate">Top Format</span>
+          <Video size={15} className="text-pink-600 shrink-0 ml-1" />
         </div>
-        <div className="text-lg sm:text-2xl font-bold mt-1.5 sm:mt-2 text-pink-400 truncate">{topFormat}</div>
-        <p className="text-[10px] sm:text-xs text-slate-400 mt-0.5 sm:mt-1 truncate">Dominant format</p>
+        <div className="text-lg sm:text-2xl font-bold mt-2 text-pink-700 truncate">{topFormat}</div>
+        <p className="text-xs text-slate-500 mt-1 truncate">Most frequent</p>
       </div>
     </div>
   );

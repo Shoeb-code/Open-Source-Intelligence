@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Radar,
   Play,
@@ -34,13 +34,18 @@ export default function App() {
   const [backendOnline, setBackendOnline] = useState(false);
   const [persons, setPersons] = useState([]);
   const [selectedPersonId, setSelectedPersonId] = useState(null);
-  const [selectedPerson, setSelectedPerson] = useState(null);
+  const selectedPersonIdRef = useRef(null);
+  useEffect(() => {
+    selectedPersonIdRef.current = selectedPersonId;
+  }, [selectedPersonId]);
+  const selectedPerson = persons.find((p) => p.id === selectedPersonId) || null;
 
-  // Active Research State
-  const [activeJobId, setActiveJobId] = useState(null);
-  const [jobStatus, setJobStatus] = useState(null);
-  const [isResearching, setIsResearching] = useState(false);
-  const [researchingPersonId, setResearchingPersonId] = useState(null);
+  // Per-target Active Research State: { [personId]: { jobId, status } }
+  const [activeJobsByPerson, setActiveJobsByPerson] = useState({});
+  const currentResearch = selectedPersonId ? activeJobsByPerson[selectedPersonId] || null : null;
+  const isSelectedResearching = Boolean(currentResearch);
+  const selectedJobStatus = currentResearch?.status || null;
+  const researchingPersonIds = Object.keys(activeJobsByPerson);
 
   // Active Tab
   const [activeTab, setActiveTab] = useState('account'); // account, overview, appearances, timeline, sources
@@ -50,6 +55,7 @@ export default function App() {
   const [appearances, setAppearances] = useState([]);
   const [timeline, setTimeline] = useState([]);
   const [sources, setSources] = useState([]);
+  const [insightsHistory, setInsightsHistory] = useState(null);
   const [loadingData, setLoadingData] = useState(false);
 
   // Modal States
@@ -57,11 +63,60 @@ export default function App() {
   const [showUrlUploadModal, setShowUrlUploadModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const fetchPersonIntelligence = useCallback(async (personId) => {
+    if (!personId) return;
+    setLoadingData(true);
+    try {
+      const [personRes, rep, apps, tm, srcs, ins] = await Promise.allSettled([
+        api.getPerson(personId),
+        api.getReport(personId),
+        api.getAppearances(personId),
+        api.getTimeline(personId),
+        api.getSources(personId),
+        api.getInsights(personId),
+      ]);
+
+      if (personRes.status === 'fulfilled' && personRes.value) {
+        const freshPerson = personRes.value;
+        setPersons((prev) => prev.map((p) => (p.id === personId ? freshPerson : p)));
+      }
+
+      if (selectedPersonIdRef.current === personId) {
+        setReportData(rep.status === 'fulfilled' ? rep.value : null);
+        setAppearances(apps.status === 'fulfilled' ? apps.value : []);
+        setTimeline(tm.status === 'fulfilled' ? tm.value : []);
+        setSources(srcs.status === 'fulfilled' ? srcs.value : []);
+        setInsightsHistory(ins.status === 'fulfilled' ? ins.value : null);
+      }
+    } catch (err) {
+      console.error('Error loading person intelligence:', err);
+    } finally {
+      if (selectedPersonIdRef.current === personId) {
+        setLoadingData(false);
+      }
+    }
+  }, []);
+
   // 1. Initial Load & Backend Health Ping
   useEffect(() => {
-    initialLoad();
+    let active = true;
+    async function load() {
+      try {
+        const isUp = await api.checkHealth();
+        if (active) setBackendOnline(isUp);
+        const list = await api.getPersons();
+        if (!active) return;
+        setPersons(list);
+        if (list.length > 0) {
+          setSelectedPersonId((curr) => curr || list[0].id);
+        }
+      } catch (err) {
+        console.error('Initial load error:', err);
+        if (active) setBackendOnline(false);
+      }
+    }
+    load();
 
-    // Low-frequency health ping every 45s (ping ONLY, NEVER re-fetch persons or reset intelligence state)
     const interval = setInterval(async () => {
       try {
         const isUp = await api.checkHealth();
@@ -71,144 +126,102 @@ export default function App() {
       }
     }, 45000);
 
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
-  async function initialLoad() {
-    try {
-      const isUp = await api.checkHealth();
-      setBackendOnline(isUp);
-      const list = await api.getPersons();
-      setPersons(list);
-      if (list.length > 0 && !selectedPersonId) {
-        setSelectedPersonId(list[0].id);
-      }
-    } catch (err) {
-      console.error('Initial load error:', err);
-      setBackendOnline(false);
-    }
-  }
-
-  // Handle switching target person
   function handleSelectPerson(personId) {
     if (personId === selectedPersonId) return;
-    // Clear intelligence data immediately to prevent cross-person data bleeding
     setReportData(null);
     setAppearances([]);
     setTimeline([]);
     setSources([]);
+    setInsightsHistory(null);
     setSelectedPersonId(personId);
   }
 
-  // 2. Load Selected Target Data (ONLY re-runs when the user selects a different target)
+  // 2. Load Selected Target Data when target switches
   useEffect(() => {
-    if (!selectedPersonId) {
-      setSelectedPerson(null);
-      setReportData(null);
-      setAppearances([]);
-      setTimeline([]);
-      setSources([]);
-      return;
-    }
-    const found = persons.find((p) => p.id === selectedPersonId);
-    setSelectedPerson(found || null);
+    if (!selectedPersonId) return;
     fetchPersonIntelligence(selectedPersonId);
-  }, [selectedPersonId]);
+  }, [selectedPersonId, fetchPersonIntelligence]);
 
-  // Keep selectedPerson metadata in sync if persons array is updated without re-fetching all intelligence
-  useEffect(() => {
-    if (selectedPersonId && persons.length > 0) {
-      const found = persons.find((p) => p.id === selectedPersonId);
-      if (found) setSelectedPerson(found);
-    }
-  }, [persons, selectedPersonId]);
-
-  async function fetchPersonIntelligence(personId) {
-    if (!personId) return;
-    setLoadingData(true);
-    try {
-      const [personRes, rep, apps, tm, srcs] = await Promise.allSettled([
-        api.getPerson(personId),
-        api.getReport(personId),
-        api.getAppearances(personId),
-        api.getTimeline(personId),
-        api.getSources(personId),
-      ]);
-
-      if (personRes.status === 'fulfilled' && personRes.value) {
-        const freshPerson = personRes.value;
-        setPersons((prev) => prev.map((p) => (p.id === personId ? freshPerson : p)));
-      }
-
-      // Guard: Only apply results if the user has not switched to another person while waiting
-      setSelectedPersonId((currId) => {
-        if (currId === personId) {
-          if (personRes.status === 'fulfilled' && personRes.value) {
-            setSelectedPerson(personRes.value);
-          }
-          setReportData(rep.status === 'fulfilled' ? rep.value : null);
-          setAppearances(apps.status === 'fulfilled' ? apps.value : []);
-          setTimeline(tm.status === 'fulfilled' ? tm.value : []);
-          setSources(srcs.status === 'fulfilled' ? srcs.value : []);
-        }
-        return currId;
-      });
-    } catch (err) {
-      console.error('Error loading person intelligence:', err);
-    } finally {
-      setLoadingData(false);
-    }
-  }
-
-  // 3. Trigger Discovery Pipeline
+  // 3. Trigger Discovery Pipeline strictly for the requested target person
   async function handleStartResearch() {
-    if (!selectedPersonId || isResearching) return;
+    const targetPersonId = selectedPersonId;
+    if (!targetPersonId || activeJobsByPerson[targetPersonId]) return;
     try {
-      setIsResearching(true);
-      setResearchingPersonId(selectedPersonId);
-      const res = await api.startResearch(selectedPersonId);
-      setActiveJobId(res.id);
-      setJobStatus(res);
+      setActiveJobsByPerson((prev) => ({
+        ...prev,
+        [targetPersonId]: { jobId: null, status: { status: 'STARTING', progress: 5 } },
+      }));
+      const res = await api.startResearch(targetPersonId);
+      setActiveJobsByPerson((prev) => ({
+        ...prev,
+        [targetPersonId]: { jobId: res.id, status: res },
+      }));
     } catch (err) {
       alert(`Failed to start research: ${err.message}`);
-      setIsResearching(false);
-      setResearchingPersonId(null);
+      setActiveJobsByPerson((prev) => {
+        const next = { ...prev };
+        delete next[targetPersonId];
+        return next;
+      });
     }
   }
 
-  // 4. Poll Research Progress
+  // 4. Poll Research Progress independently per active target
   useEffect(() => {
-    if (!activeJobId || !isResearching) return;
+    const activeEntries = Object.entries(activeJobsByPerson).filter(([, info]) => info?.jobId);
+    if (activeEntries.length === 0) return;
 
     const interval = setInterval(async () => {
-      try {
-        const status = await api.getResearchStatus(activeJobId);
-        setJobStatus(status);
-
-        if (status.status === 'COMPLETED' || status.status === 'FAILED') {
-          setIsResearching(false);
-          setActiveJobId(null);
-          const targetToRefresh = researchingPersonId || selectedPersonId;
-          setResearchingPersonId(null);
-          if (targetToRefresh) {
-            fetchPersonIntelligence(targetToRefresh);
+      await Promise.all(
+        activeEntries.map(async ([personId, info]) => {
+          try {
+            const status = await api.getResearchStatus(info.jobId);
+            if (status.status === 'COMPLETED' || status.status === 'FAILED') {
+              setActiveJobsByPerson((prev) => {
+                const next = { ...prev };
+                delete next[personId];
+                return next;
+              });
+              if (selectedPersonIdRef.current === personId) {
+                fetchPersonIntelligence(personId);
+              }
+            } else {
+              setActiveJobsByPerson((prev) => {
+                if (!prev[personId]) return prev;
+                return {
+                  ...prev,
+                  [personId]: { ...prev[personId], status },
+                };
+              });
+            }
+          } catch (err) {
+            console.error('Polling error:', err);
           }
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
+        })
+      );
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [activeJobId, isResearching, researchingPersonId, selectedPersonId]);
+  }, [activeJobsByPerson, fetchPersonIntelligence]);
 
   // 5. Delete Person
   async function handleDeletePerson(personId) {
     try {
       await api.deletePerson(personId);
-      setPersons((prev) => prev.filter((p) => p.id !== personId));
+      const remaining = persons.filter((p) => p.id !== personId);
+      setPersons(remaining);
       if (selectedPersonId === personId) {
-        const remaining = persons.filter((p) => p.id !== personId);
+        setReportData(null);
+        setAppearances([]);
+        setTimeline([]);
+        setSources([]);
+        setInsightsHistory(null);
         setSelectedPersonId(remaining.length > 0 ? remaining[0].id : null);
       }
     } catch (err) {
@@ -228,59 +241,70 @@ export default function App() {
     }
   }
 
+  // 7. Generate AI Insights
+  async function handleGenerateInsights(personId, focusNotes = null) {
+    const created = await api.generateInsights(personId, { focus_notes: focusNotes });
+    const latestHistory = await api.getInsights(personId);
+    setSelectedPersonId((currId) => {
+      if (currId === personId) {
+        setInsightsHistory(latestHistory);
+      }
+      return currId;
+    });
+    return created;
+  }
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
-      {/* --- TOP NAVBAR --- */}
-      <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur-md sticky top-0 z-40 px-3.5 sm:px-6 py-3 sm:py-3.5 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          {/* Mobile Drawer Hamburger Button */}
+    <div className="min-h-screen flex flex-col bg-white text-slate-900 font-sans">
+      {/* --- SIMPLE CLEAN TOP NAVBAR --- */}
+      <header className="border-b border-slate-200 bg-white sticky top-0 z-40 px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => setMobileMenuOpen(true)}
-            className="md:hidden p-2 rounded-xl border border-slate-800 bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-            title="Open Target Profiles"
-            aria-label="Open Target Profiles"
+            className="md:hidden p-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 shrink-0"
+            title="Open People List"
+            aria-label="Open People List"
           >
             <Menu size={20} />
           </button>
 
-          <div className="p-2 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 shadow-[0_0_18px_rgba(6,182,212,0.4)] shrink-0">
-            <Radar size={20} className="text-white sm:w-[22px] sm:h-[22px]" />
+          <div className="p-2 rounded-xl bg-blue-600 shadow-sm shrink-0">
+            <Radar size={20} className="text-white" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-100 truncate">
-              PUBLIC APPEARANCE <span className="text-cyan-400">INTELLIGENCE</span>
+            <h1 className="text-sm sm:text-base font-bold tracking-tight text-slate-900 truncate">
+              Leadzen <span className="text-blue-600">Intelligence</span>
             </h1>
-            <p className="text-[11px] sm:text-xs text-slate-400 truncate hidden xs:block">
-              Search & Analyze Public Interviews, Podcasts, Talks & Articles
+            <p className="text-xs text-slate-500 truncate hidden sm:block">
+              Simple People Research, Public Appearances & AI Insights
             </p>
           </div>
         </div>
 
-        {/* Backend Status Pill & Links */}
-        <div className="flex items-center gap-2 sm:gap-4 shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           <div
-            className={`inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-semibold tracking-wide border ${
+            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold border ${
               backendOnline
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                : 'bg-rose-500/10 border-rose-500/30 text-rose-400'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-rose-50 border-rose-200 text-rose-700'
             }`}
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                backendOnline ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 'bg-rose-500'
+                backendOnline ? 'bg-emerald-500' : 'bg-rose-500'
               }`}
             />
             <span className="hidden sm:inline">
-              {backendOnline ? 'System Online (Port 8000)' : 'Connecting to Server...'}
+              {backendOnline ? 'System Ready' : 'Connecting...'}
             </span>
-            <span className="sm:hidden">{backendOnline ? 'Online' : 'Connecting...'}</span>
+            <span className="sm:hidden">{backendOnline ? 'Ready' : 'Offline'}</span>
           </div>
 
           <a
             href="/docs"
             target="_blank"
             rel="noreferrer"
-            className="text-xs text-slate-400 hover:text-slate-200 transition-colors inline-flex items-center gap-1"
+            className="text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors inline-flex items-center gap-1"
           >
             <span className="hidden sm:inline">API Docs</span>
             <ExternalLink size={12} />
@@ -289,11 +313,12 @@ export default function App() {
       </header>
 
       {/* --- MAIN LAYOUT --- */}
-      <div className="flex flex-1 overflow-hidden relative">
-        {/* --- MODULE 1: TARGET SELECTOR SIDEBAR --- */}
+      <div className="flex flex-1 overflow-hidden relative bg-white">
+        {/* Sidebar: People Selector */}
         <TargetSelector
           persons={persons}
           selectedPersonId={selectedPersonId}
+          researchingPersonIds={researchingPersonIds}
           onSelectPerson={handleSelectPerson}
           onOpenRegisterModal={() => setShowRegisterModal(true)}
           onDeletePerson={handleDeletePerson}
@@ -301,56 +326,36 @@ export default function App() {
           onCloseMobile={() => setMobileMenuOpen(false)}
         />
 
-        {/* --- MAIN INTELLIGENCE DASHBOARD --- */}
-        <main className="flex-1 flex flex-col overflow-y-auto bg-slate-950">
+        {/* Workspace Panel */}
+        <main className="flex-1 flex flex-col overflow-y-auto bg-white">
           {selectedPerson ? (
             <>
-              {/* --- TARGET HEADER & CONTROL BAR --- */}
-              <div className="p-4 sm:p-6 border-b border-slate-800 bg-slate-900/40 backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+              {/* Target Summary & Quick Controls */}
+              <div className="p-4 sm:p-6 border-b border-slate-200 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <h2
                       onClick={() => setActiveTab('account')}
-                      className="text-xl sm:text-2xl font-bold tracking-tight text-slate-100 hover:text-cyan-400 cursor-pointer transition-colors"
-                      title="Click to view dedicated Account Profile"
+                      className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 hover:text-blue-600 cursor-pointer transition-colors"
                     >
                       {selectedPerson.name}
                     </h2>
                     <span className="badge badge-verified">
                       <ShieldCheck size={13} />
-                      <span>Active Target</span>
+                      <span>Active</span>
                     </span>
-                    <button
-                      onClick={() => setActiveTab('account')}
-                      className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all ${
-                        activeTab === 'account'
-                          ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm'
-                          : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-cyan-500/50 hover:text-cyan-300'
-                      }`}
-                      title="View dedicated Account Page with full bio and social profiles"
-                    >
-                      <UserCheck size={13} className="text-cyan-400" />
-                      <span>Account Dossier</span>
-                    </button>
                   </div>
-                  <p className="text-xs sm:text-sm font-medium text-cyan-400 mt-1">
+                  <p className="text-xs sm:text-sm font-medium text-blue-700 mt-1">
                     {selectedPerson.profession || 'Independent Professional'}
                   </p>
-                  {selectedPerson.biography && (
-                    <p className="text-xs text-slate-400 mt-1.5 max-w-2xl leading-relaxed">
-                      {selectedPerson.biography}
-                    </p>
-                  )}
-
-                  {/* Profile Links */}
-                  <div className="flex flex-wrap gap-2 mt-3">
+                  <div className="flex flex-wrap gap-2 mt-2.5">
                     {selectedPerson.social_profiles?.map((prof) => (
                       <a
                         key={prof.id}
                         href={prof.profile_url}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-cyan-400 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 transition-colors"
+                        className="inline-flex items-center gap-1.5 text-xs text-slate-600 hover:text-blue-700 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 transition-colors"
                       >
                         <Globe size={12} />
                         <span>{prof.platform}: @{prof.username || 'profile'}</span>
@@ -360,8 +365,8 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* ACTION CONTROLS: Upload URL & Run Automated Discovery */}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto">
+                {/* Action Buttons */}
+                <div className="flex flex-wrap items-center gap-2.5">
                   <button
                     onClick={() => fetchPersonIntelligence(selectedPerson.id)}
                     className="btn btn-secondary p-2.5 shrink-0"
@@ -370,67 +375,62 @@ export default function App() {
                     <RotateCw size={16} />
                   </button>
 
-                  {/* Upload URL Button */}
                   <button
                     onClick={() => setShowUrlUploadModal(true)}
-                    className="btn btn-secondary border-cyan-500/50 text-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
+                    className="btn btn-secondary text-xs sm:text-sm"
                   >
                     <Link2 size={15} />
-                    <span>Upload / Analyze URL</span>
+                    <span>Add Link</span>
                   </button>
 
-                  {/* Automated Discovery Run Button */}
                   <button
                     onClick={handleStartResearch}
-                    disabled={isResearching}
-                    className="btn btn-primary px-4 sm:px-5 py-2.5 text-xs sm:text-sm flex-1 sm:flex-none justify-center"
+                    disabled={isSelectedResearching}
+                    className="btn btn-primary px-4 py-2 text-xs sm:text-sm"
                   >
-                    {isResearching ? (
+                    {isSelectedResearching ? (
                       <>
-                        <RotateCw size={16} className="animate-spin" />
+                        <RotateCw size={15} className="animate-spin" />
                         <span>Searching...</span>
                       </>
                     ) : (
                       <>
-                        <Play size={16} fill="white" />
-                        <span>Start Auto-Discovery</span>
+                        <Play size={15} fill="white" />
+                        <span>Search Web & Social</span>
                       </>
                     )}
                   </button>
                 </div>
               </div>
 
-              {/* --- REAL-TIME RESEARCH PROGRESS BAR (IF RUNNING FOR THIS TARGET) --- */}
-              {isResearching && researchingPersonId === selectedPerson?.id && (
-                <div className="p-4 bg-cyan-950/20 border-b border-cyan-500/30">
+              {/* Research Progress Strip (Shown ONLY for the actively researching person) */}
+              {isSelectedResearching && (
+                <div className="p-4 bg-blue-50 border-b border-blue-200">
                   <div className="flex justify-between items-center text-xs font-semibold mb-1.5">
-                    <span className="text-cyan-400">
-                      Discovery Pipeline in Progress for {selectedPerson.name}: {jobStatus?.progress || 10}%
+                    <span className="text-blue-800">
+                      Searching web, YouTube, podcasts & social links for {selectedPerson.name}: {selectedJobStatus?.progress || 10}%
                     </span>
-                    <span className="text-slate-400 font-mono uppercase">
-                      Status: {jobStatus?.status || 'RUNNING'}
+                    <span className="text-blue-700 font-mono uppercase">
+                      {selectedJobStatus?.status || 'RUNNING'}
                     </span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                  <div className="w-full h-2 rounded-full bg-blue-100 overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-all duration-300 ease-out"
-                      style={{ width: `${jobStatus?.progress || 15}%` }}
+                      className="h-full bg-blue-600 transition-all duration-300 ease-out"
+                      style={{ width: `${selectedJobStatus?.progress || 15}%` }}
                     />
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1.5">
-                    Scraping YouTube, News Articles, Podcasts, and Event pages • Verifying identity and deduplicating...
-                  </p>
                 </div>
               )}
 
-              {/* --- NAVIGATION TABS --- */}
-              <div className="flex border-b border-slate-800 bg-slate-900/60 px-3 sm:px-6 overflow-x-auto scroll-smooth">
+              {/* Simple Navigation Tabs */}
+              <div className="flex border-b border-slate-200 bg-slate-50/60 px-3 sm:px-6 overflow-x-auto">
                 {[
-                  { id: 'account', label: 'Target Account & Socials', icon: UserCheck, count: null },
-                  { id: 'overview', label: 'Executive Report', icon: FileText, count: null },
-                  { id: 'appearances', label: 'Public Appearances & Media', icon: Layers, count: appearances.length },
-                  { id: 'timeline', label: 'Chronological Timeline', icon: Calendar, count: timeline.length },
-                  { id: 'sources', label: 'Sources & Provenance', icon: Globe, count: sources.length },
+                  { id: 'account', label: 'Account & AI Insights', icon: UserCheck, count: null },
+                  { id: 'overview', label: 'Summary Report', icon: FileText, count: null },
+                  { id: 'appearances', label: 'Appearances', icon: Layers, count: appearances.length },
+                  { id: 'timeline', label: 'Timeline', icon: Calendar, count: timeline.length },
+                  { id: 'sources', label: 'All Sources', icon: Globe, count: sources.length },
                 ].map((t) => {
                   const Icon = t.icon;
                   const isActive = activeTab === t.id;
@@ -438,10 +438,10 @@ export default function App() {
                     <button
                       key={t.id}
                       onClick={() => setActiveTab(t.id)}
-                      className={`py-3 px-3 sm:px-4 text-xs font-semibold tracking-wide border-b-2 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap transition-colors ${
+                      className={`py-3 px-3 sm:px-4 text-xs font-semibold border-b-2 flex items-center gap-1.5 sm:gap-2 whitespace-nowrap transition-colors ${
                         isActive
-                          ? 'border-cyan-400 text-cyan-400'
-                          : 'border-transparent text-slate-400 hover:text-slate-200'
+                          ? 'border-blue-600 text-blue-700 bg-white'
+                          : 'border-transparent text-slate-600 hover:text-slate-900'
                       }`}
                     >
                       <Icon size={15} />
@@ -450,8 +450,8 @@ export default function App() {
                         <span
                           className={`text-[11px] px-1.5 py-0.5 rounded-full ${
                             isActive
-                              ? 'bg-cyan-500/20 text-cyan-400 font-bold'
-                              : 'bg-slate-800 text-slate-400'
+                              ? 'bg-blue-100 text-blue-700 font-bold'
+                              : 'bg-slate-200 text-slate-700'
                           }`}
                         >
                           {t.count}
@@ -462,99 +462,92 @@ export default function App() {
                 })}
               </div>
 
-              {/* --- TAB CONTENT AREA --- */}
-              <div className="p-3.5 sm:p-6 flex-1">
-                {loadingData && !isResearching ? (
+              {/* Workspace Body */}
+              <div className="p-4 sm:p-6 flex-1 bg-white">
+                {loadingData && !isSelectedResearching ? (
                   <div className="text-center py-16 text-slate-500">
-                    <RotateCw size={28} className="animate-spin mx-auto mb-3 opacity-50 text-cyan-400" />
-                    <p className="text-sm">Loading intelligence data...</p>
+                    <RotateCw size={28} className="animate-spin mx-auto mb-3 text-blue-600" />
+                    <p className="text-sm">Loading profile data...</p>
                   </div>
                 ) : (
                   <>
-                    {/* --- TAB 0: TARGET ACCOUNT PROFILE & SOCIALS MODULE --- */}
                     {activeTab === 'account' && (
                       <TargetAccountPage
                         key={selectedPerson.id}
                         person={selectedPerson}
                         appearances={appearances}
+                        insightsHistory={insightsHistory}
                         onStartResearch={handleStartResearch}
-                        isResearching={isResearching}
+                        isResearching={isSelectedResearching}
                         onOpenUrlModal={() => setShowUrlUploadModal(true)}
                         onDeleteAppearance={handleDeleteAppearance}
                         onEnrichLinkedIn={async (personId, force = false) => {
                           const res = await api.enrichLinkedInProfile(personId, { force });
                           const refreshed = await api.getPerson(personId);
                           setPersons((prev) => prev.map((p) => (p.id === personId ? refreshed : p)));
-                          setSelectedPersonId((curr) => {
-                            if (curr === personId) setSelectedPerson(refreshed);
-                            return curr;
-                          });
                           return res;
                         }}
+                        onGenerateInsights={handleGenerateInsights}
                       />
                     )}
 
-                    {/* --- TAB 1: EXECUTIVE OVERVIEW MODULE --- */}
                     {activeTab === 'overview' && (
-                      <div className="flex flex-col gap-6">
+                      <div className="flex flex-col gap-6 max-w-7xl mx-auto">
                         <MetricsGrid reportData={reportData} appearances={appearances} sources={sources} />
 
                         {appearances.length === 0 ? (
-                          /* FRIENDLY EMPTY STATE WHEN NO SEARCH HAS BEEN RUN YET */
-                          <div className="glass-panel p-8 rounded-2xl border border-slate-800 bg-slate-900/50 text-center max-w-2xl mx-auto my-6">
-                            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto mb-4 border border-cyan-500/20">
+                          <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center max-w-2xl mx-auto my-6 shadow-sm">
+                            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-4 border border-blue-200">
                               <Sparkles size={24} />
                             </div>
-                            <h3 className="text-lg font-bold text-slate-100">
-                              No appearances collected for {selectedPerson.name} yet
+                            <h3 className="text-lg font-bold text-slate-900">
+                              No public appearances found for {selectedPerson.name} yet
                             </h3>
-                            <p className="text-xs text-slate-400 mt-2 max-w-md mx-auto leading-relaxed">
-                              Choose how you would like to collect intelligence for this target:
+                            <p className="text-sm text-slate-600 mt-2 max-w-md mx-auto">
+                              Start an automated web search or paste any YouTube/article URL to analyze:
                             </p>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-left">
                               <div
                                 onClick={handleStartResearch}
-                                className="p-4 rounded-xl border border-slate-800 bg-slate-900 hover:border-cyan-500/50 cursor-pointer transition-all group"
+                                className="p-4 rounded-xl border border-slate-200 bg-slate-50 hover:border-blue-400 cursor-pointer transition-all"
                               >
-                                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs mb-1">
+                                <div className="flex items-center gap-2 text-blue-700 font-semibold text-xs mb-1">
                                   <Play size={14} fill="currentColor" />
-                                  <span>Automated Web Search</span>
+                                  <span>Search Web & Social</span>
                                 </div>
-                                <p className="text-xs text-slate-400 leading-normal">
-                                  Automatically searches YouTube, Podcasts, News, and Events across the web.
+                                <p className="text-xs text-slate-600">
+                                  Automatically finds LinkedIn, YouTube, podcasts, and news articles.
                                 </p>
                               </div>
 
                               <div
                                 onClick={() => setShowUrlUploadModal(true)}
-                                className="p-4 rounded-xl border border-slate-800 bg-slate-900 hover:border-cyan-500/50 cursor-pointer transition-all group"
+                                className="p-4 rounded-xl border border-slate-200 bg-slate-50 hover:border-blue-400 cursor-pointer transition-all"
                               >
-                                <div className="flex items-center gap-2 text-cyan-400 font-semibold text-xs mb-1">
+                                <div className="flex items-center gap-2 text-blue-700 font-semibold text-xs mb-1">
                                   <Link2 size={14} />
-                                  <span>Analyze a Specific Link</span>
+                                  <span>Analyze a Link</span>
                                 </div>
-                                <p className="text-xs text-slate-400 leading-normal">
-                                  Paste any YouTube interview, podcast, or news article URL to analyze immediately.
+                                <p className="text-xs text-slate-600">
+                                  Paste any specific video, podcast, or article link to extract immediately.
                                 </p>
                               </div>
                             </div>
                           </div>
                         ) : (
                           <>
-                            {/* Executive Summary Card */}
-                            <div className="glass-panel p-6 rounded-xl border border-slate-700/60 bg-slate-900/60 backdrop-blur-md">
-                              <h3 className="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
-                                <Activity size={18} className="text-cyan-400" />
+                            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                              <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
+                                <Activity size={18} className="text-blue-600" />
                                 <span>Executive Summary</span>
                               </h3>
-                              <p className="text-sm text-slate-300 leading-relaxed">
+                              <p className="text-sm text-slate-700 leading-relaxed">
                                 {reportData?.executive_summary ||
                                   `Identified ${appearances.length} public appearances across interviews, podcasts, and media for ${selectedPerson.name}.`}
                               </p>
                             </div>
 
-                            {/* Topics and Statements 2-Column Grid */}
                             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                               <TopicCloud topics={reportData?.recurring_topics} />
                               <EvidenceQuotes statements={reportData?.important_statements} />
@@ -564,82 +557,83 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* --- TAB 2: APPEARANCES MODULE --- */}
                     {activeTab === 'appearances' && (
-                      <AppearanceList
-                        appearances={appearances}
-                        onDeleteAppearance={handleDeleteAppearance}
-                      />
+                      <div className="max-w-7xl mx-auto">
+                        <AppearanceList
+                          appearances={appearances}
+                          onDeleteAppearance={handleDeleteAppearance}
+                        />
+                      </div>
                     )}
 
-                    {/* --- TAB 3: TIMELINE MODULE --- */}
                     {activeTab === 'timeline' && <TimelineView timeline={timeline} />}
 
-                    {/* --- TAB 4: SOURCES & PROVENANCE MODULE --- */}
-                    {activeTab === 'sources' && <SourcesTable sources={sources} />}
+                    {activeTab === 'sources' && (
+                      <div className="max-w-7xl mx-auto">
+                        <SourcesTable sources={sources} />
+                      </div>
+                    )}
                   </>
                 )}
               </div>
             </>
           ) : (
-            /* ONBOARDING HERO WHEN ZERO PERSONS IN DATABASE */
             <div className="m-auto text-center p-8 max-w-xl">
-              <div className="w-16 h-16 rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto mb-5 border border-cyan-500/20 shadow-[0_0_25px_rgba(6,182,212,0.15)]">
+              <div className="w-16 h-16 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto mb-5 border border-blue-200">
                 <Radar size={32} />
               </div>
-              <h2 className="text-2xl font-bold text-slate-100">
-                Welcome to Person Intelligence
+              <h2 className="text-2xl font-bold text-slate-900">
+                Welcome to Leadzen Intelligence
               </h2>
-              <p className="text-sm text-slate-400 mt-2 leading-relaxed">
-                Discover, transcribe, and analyze public interviews, podcasts, news coverage, and conference talks for any individual.
+              <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                Add any executive, founder, or prospect to collect public appearances, enrich LinkedIn backgrounds, and generate structured AI insights.
               </p>
 
-              {/* 3 Step Visual Guide */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 my-8 text-left">
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-bold flex items-center justify-center mb-2">
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+                  <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-700 text-xs font-bold flex items-center justify-center mb-2">
                     1
                   </div>
-                  <h4 className="text-xs font-bold text-slate-200">Add a Person</h4>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Enter the name & profession of the individual.
+                  <h4 className="text-xs font-bold text-slate-900">Add a Person</h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Enter their name and company or role.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-bold flex items-center justify-center mb-2">
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+                  <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-700 text-xs font-bold flex items-center justify-center mb-2">
                     2
                   </div>
-                  <h4 className="text-xs font-bold text-slate-200">Run Discovery</h4>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Auto-search public sources or paste any video/article link.
+                  <h4 className="text-xs font-bold text-slate-900">Collect Information</h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Search YouTube, LinkedIn, podcasts, and news.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-slate-900 border border-slate-800">
-                  <div className="w-6 h-6 rounded-full bg-cyan-500/20 text-cyan-400 text-xs font-bold flex items-center justify-center mb-2">
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-sm">
+                  <div className="w-6 h-6 rounded-full bg-blue-50 text-blue-700 text-xs font-bold flex items-center justify-center mb-2">
                     3
                   </div>
-                  <h4 className="text-xs font-bold text-slate-200">Get AI Insights</h4>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    View verified appearances, video transcripts & timeline.
+                  <h4 className="text-xs font-bold text-slate-900">Generate AI Insights</h4>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Get structured 7-section executive briefings.
                   </p>
                 </div>
               </div>
 
               <button
                 onClick={() => setShowRegisterModal(true)}
-                className="btn btn-primary px-6 py-3 text-sm font-semibold shadow-lg shadow-cyan-500/20"
+                className="btn btn-primary px-6 py-3 text-sm font-semibold"
               >
                 <PlusCircle size={18} />
-                <span>Add Your First Person to Start</span>
+                <span>Add Your First Person</span>
               </button>
             </div>
           )}
         </main>
       </div>
 
-      {/* --- REGISTER TARGET MODAL --- */}
+      {/* Register Modal */}
       <RegisterTargetModal
         isOpen={showRegisterModal}
         onClose={() => setShowRegisterModal(false)}
@@ -649,13 +643,13 @@ export default function App() {
           setReportData(null);
           setTimeline([]);
           setSources([]);
+          setInsightsHistory(null);
           setSelectedPersonId(newPerson.id);
-          setSelectedPerson(newPerson);
           setActiveTab('account');
         }}
       />
 
-      {/* --- DIRECT URL UPLOAD & ANALYZE MODAL --- */}
+      {/* Analyze Specific URL Modal */}
       <UrlUploadModal
         isOpen={showUrlUploadModal}
         onClose={() => setShowUrlUploadModal(false)}

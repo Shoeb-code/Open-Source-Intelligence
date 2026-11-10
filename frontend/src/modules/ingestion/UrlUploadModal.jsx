@@ -47,17 +47,17 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
-      <div className="glass-panel w-full max-w-lg rounded-2xl p-4 sm:p-6 bg-slate-900 border border-slate-700/80 shadow-2xl max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="w-full max-w-lg rounded-2xl p-5 sm:p-6 bg-white border border-slate-200 shadow-2xl max-h-[92vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-5">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+            <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
               <Link2 size={20} />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-100">Upload & Analyze Public URL</h3>
-              <p className="text-xs text-slate-400">
-                Target: <span className="text-cyan-400 font-semibold">{personName}</span>
+              <h3 className="text-lg font-bold text-slate-900">Add & Analyze a Link</h3>
+              <p className="text-xs text-slate-500">
+                Person: <span className="text-blue-700 font-semibold">{personName}</span>
               </p>
             </div>
           </div>
@@ -66,14 +66,14 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
               handleReset();
               onClose();
             }}
-            className="text-slate-400 hover:text-slate-200 transition-colors"
+            className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-100 transition-colors"
           >
             <X size={20} />
           </button>
         </div>
 
         {error && (
-          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2 mb-4">
+          <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 mb-4">
             <AlertCircle size={16} className="shrink-0" />
             <span>{error}</span>
           </div>
@@ -81,23 +81,23 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
 
         {result ? (
           <div className="flex flex-col gap-4">
-            <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-              <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm mb-1.5">
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+              <div className="flex items-center gap-2 text-emerald-700 font-semibold text-sm mb-1.5">
                 <CheckCircle2 size={18} />
-                <span>URL Extracted & Analyzed!</span>
+                <span>Link Analyzed & Added!</span>
               </div>
-              <p className="text-sm font-semibold text-slate-200">{result.title}</p>
+              <p className="text-sm font-semibold text-slate-900">{result.title}</p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <span className="badge badge-interview">{result.appearance_type}</span>
                 <span className="badge badge-verified">
                   {result.identity_status} ({Math.round(result.confidence_score * 100)}%)
                 </span>
                 {result.analysis?.person_role && (
-                  <span className="text-xs text-cyan-400 font-medium">Role: {result.analysis.person_role}</span>
+                  <span className="text-xs text-blue-700 font-medium">Role: {result.analysis.person_role}</span>
                 )}
               </div>
               {result.analysis?.summary && (
-                <p className="text-xs text-slate-300 mt-2.5 leading-relaxed bg-slate-950/40 p-2.5 rounded-lg border border-slate-800">
+                <p className="text-xs text-slate-700 mt-2.5 leading-relaxed bg-white p-2.5 rounded-lg border border-slate-200">
                   {result.analysis.summary}
                 </p>
               )}
@@ -105,7 +105,7 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
 
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={handleReset} className="btn btn-secondary">
-                Upload Another URL
+                Add Another Link
               </button>
               <button
                 onClick={() => {
@@ -121,8 +121,8 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
-              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                Public URL to Analyze *
+              <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
+                Public URL *
               </label>
               <input
                 type="url"
@@ -132,22 +132,22 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
                 onChange={(e) => setUrl(e.target.value)}
                 className="input-field"
               />
-              <p className="text-[11px] text-slate-500 mt-1">
-                Supports YouTube videos, podcasts, news articles, interviews, and conference pages.
+              <p className="text-xs text-slate-500 mt-1">
+                Works with YouTube videos, podcasts, LinkedIn posts, news articles, and blogs.
               </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
-                  Media Format (Optional)
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
+                  Format (Optional)
                 </label>
                 <select
                   value={sourceType}
                   onChange={(e) => setSourceType(e.target.value)}
                   className="input-field"
                 >
-                  <option value="">Auto-Detect Format</option>
+                  <option value="">Auto-Detect</option>
                   <option value="YOUTUBE">YouTube Video</option>
                   <option value="PODCAST">Podcast Episode</option>
                   <option value="NEWS">News Article</option>
@@ -157,7 +157,7 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider block mb-1">
                   Title Override (Optional)
                 </label>
                 <input
@@ -170,7 +170,7 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
               </div>
             </div>
 
-            <div className="border-t border-slate-800 pt-4 flex justify-end gap-3">
+            <div className="border-t border-slate-200 pt-4 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -185,12 +185,12 @@ export default function UrlUploadModal({ isOpen, onClose, personId, personName, 
                 {loading ? (
                   <>
                     <RotateCw size={15} className="animate-spin" />
-                    <span>Extracting & Analyzing...</span>
+                    <span>Analyzing...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles size={15} />
-                    <span>Ingest & Analyze</span>
+                    <span>Analyze Link</span>
                   </>
                 )}
               </button>
