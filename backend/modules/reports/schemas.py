@@ -9,6 +9,7 @@ class SourceResponse(BaseModel):
     canonical_url: Optional[str]
     source_type: str
     extraction_status: str
+    extracted_content: Optional[str] = None
     collected_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

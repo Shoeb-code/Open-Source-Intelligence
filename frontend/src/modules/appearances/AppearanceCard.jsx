@@ -1,8 +1,22 @@
 import React, { useState } from 'react';
-import { ExternalLink, ChevronDown, ChevronUp, CheckCircle2, Trash2 } from 'lucide-react';
+import { ExternalLink, ChevronDown, ChevronUp, CheckCircle2, Trash2, FileText } from 'lucide-react';
 
 export default function AppearanceCard({ item, onDelete }) {
   const [expanded, setExpanded] = useState(false);
+  const [showContent, setShowContent] = useState(false);
+
+  const primarySource =
+    item.sources?.find((s) => s.extracted_content && s.extracted_content.trim()) ||
+    item.sources?.[0] ||
+    null;
+  const extractedContent = primarySource?.extracted_content?.trim() || '';
+  const sourceTypeUpper = (primarySource?.source_type || '').toUpperCase();
+  const contentLabel =
+    sourceTypeUpper === 'YOUTUBE'
+      ? 'YouTube Transcript / Video Details'
+      : sourceTypeUpper === 'LINKEDIN' || item.appearance_type === 'LINKEDIN_POST'
+      ? 'Extracted LinkedIn Post / Article'
+      : 'Extracted Content';
 
   const badgeTypeClass =
     item.appearance_type === 'PODCAST'
@@ -106,6 +120,35 @@ export default function AppearanceCard({ item, onDelete }) {
         </div>
       )}
 
+      {extractedContent && (
+        <div className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
+          <button
+            onClick={() => setShowContent(!showContent)}
+            className="w-full flex items-center justify-between p-2.5 text-xs font-semibold text-slate-700 hover:text-slate-900 transition-colors"
+          >
+            <span className="flex items-center gap-1.5 uppercase tracking-wider text-[11px] text-emerald-700">
+              <FileText size={13} />
+              <span>
+                {contentLabel} ({extractedContent.length.toLocaleString()} chars)
+              </span>
+            </span>
+            <span className="flex items-center gap-2">
+              {primarySource?.extraction_status && (
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600">
+                  {primarySource.extraction_status}
+                </span>
+              )}
+              {showContent ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </span>
+          </button>
+          {showContent && (
+            <div className="p-3.5 border-t border-slate-200 bg-white text-xs text-slate-700 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto font-sans">
+              {extractedContent}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 items-center pt-2 border-t border-slate-100">
         {item.analysis?.person_role && (
           <span className="inline-flex items-center text-xs px-2.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 font-semibold">
@@ -120,11 +163,6 @@ export default function AppearanceCard({ item, onDelete }) {
             #{topic}
           </span>
         ))}
-        {item.analysis?.model_name && (
-          <span className="text-[11px] px-2 py-0.5 rounded bg-slate-50 text-slate-500 border border-slate-200 font-mono ml-auto">
-            {item.analysis.model_name}
-          </span>
-        )}
       </div>
     </div>
   );

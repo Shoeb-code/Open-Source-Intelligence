@@ -69,6 +69,10 @@ def test_end_to_end_pipeline_and_report():
     assert appearances[0]["title"] == "Sarah Connor on Distributed Systems at CyberTech"
     assert appearances[0]["identity_status"] == "VERIFIED"
     assert appearances[0]["analysis"]["person_role"] == "GUEST"
+    assert (
+        appearances[0]["sources"][0]["extracted_content"]
+        == "Sarah Connor discussed resilient node consensus at CyberTech."
+    )
 
     # 4. Retrieve timeline
     timeline_res = client.get(f"/api/v1/persons/{person_id}/timeline")
@@ -83,6 +87,10 @@ def test_end_to_end_pipeline_and_report():
     sources = sources_res.json()
     assert len(sources) == 1
     assert sources[0]["source_type"] == "YOUTUBE"
+    assert (
+        sources[0]["extracted_content"]
+        == "Sarah Connor discussed resilient node consensus at CyberTech."
+    )
 
     # 6. Retrieve Consolidated Final Report
     report_res = client.get(f"/api/v1/persons/{person_id}/report")

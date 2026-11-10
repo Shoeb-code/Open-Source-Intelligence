@@ -176,9 +176,48 @@ export function buildPersonMarkdown({ person, appearances = [], sources = [], in
       );
     }
     md.push('');
+
+    const appsWithText = validApps.filter((app) =>
+      (app.sources || []).some((s) => s.extracted_content && s.extracted_content.trim())
+    );
+    if (appsWithText.length > 0) {
+      md.push(`### Extracted Posts, Articles & YouTube Transcripts (${appsWithText.length})`);
+      md.push('');
+      for (const app of appsWithText) {
+        const src =
+          (app.sources || []).find((s) => s.extracted_content && s.extracted_content.trim()) ||
+          app.sources?.[0];
+        const body = String(src?.extracted_content || '').trim();
+        md.push(`#### ${app.title || 'Source Content'} (\`${app.appearance_type}\` | \`${src?.extraction_status || 'SUCCESS'}\`)`);
+        if (src?.source_url) md.push(`- **Link:** [${src.source_url}](${src.source_url})`);
+        md.push(`- **Characters Extracted:** \`${body.length}\``);
+        md.push('');
+        md.push(body);
+        md.push('');
+      }
+    }
   }
 
   return md.join('\n');
+}
+
+const EXCEL_CELL_MAX = 30000;
+
+function truncateForExcel(text) {
+  if (!text) return '';
+  const str = String(text);
+  if (str.length <= EXCEL_CELL_MAX) return str;
+  return `${str.slice(0, EXCEL_CELL_MAX)}\n... [Truncated at ${EXCEL_CELL_MAX} chars for Excel; download Markdown or JSON for full text]`;
+}
+
+function getAppearanceExtractedText(app) {
+  const parts = [];
+  for (const s of app.sources || []) {
+    if (s.extracted_content && s.extracted_content.trim()) {
+      parts.push(s.extracted_content.trim());
+    }
+  }
+  return parts.join('\n\n---\n\n');
 }
 
 const CSV_HEADERS = [
@@ -191,6 +230,7 @@ const CSV_HEADERS = [
   'Organization_or_Publisher',
   'Title',
   'Details',
+  'Extracted_Post_or_Transcript',
   'URLs',
 ];
 
@@ -292,6 +332,7 @@ export function buildPersonCsvRows({ person, appearances = [], insightsReport = 
       Organization_or_Publisher: app.publisher || '',
       Title: app.title || '',
       Details: app.analysis?.summary || app.description || '',
+      Extracted_Post_or_Transcript: truncateForExcel(getAppearanceExtractedText(app)),
       URLs: (app.sources || []).map((s) => s.source_url).filter(Boolean).join(' | '),
     });
   }
