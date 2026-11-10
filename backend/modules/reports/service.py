@@ -152,5 +152,8 @@ def analyze_and_store_url(
 
     db.commit()
     db.refresh(appearance)
-    logger.info(f"Direct URL ingested and analyzed for person {person_id}: {clean_url}")
+    logger.info(
+        f"Direct URL ingested and analyzed for person {person_id} "
+        f"(status={payload.extraction_status}, method={payload.extraction_method}): {clean_url}"
+    )
     return appearance

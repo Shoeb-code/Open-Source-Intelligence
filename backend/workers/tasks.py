@@ -78,12 +78,20 @@ def execute_research_pipeline(job_id: str):
                 logger.warning(f"Failed extraction for {item.url}: {e}")
 
         extract_time = round(time.time() - extract_start, 2)
+        method_counts = {}
+        for payload in extracted_payloads:
+            m = payload.extraction_method or "unknown"
+            method_counts[m] = method_counts.get(m, 0) + 1
+        methods_summary = ", ".join(f"{k}={v}" for k, v in sorted(method_counts.items()))
         db.add(CollectionLog(
             job_id=job.id,
             source="ContentExtractionEngine",
             status="SUCCESS",
             execution_time=extract_time,
-            error_message=f"Extracted content/metadata from {len(extracted_payloads)} items"
+            error_message=(
+                f"Extracted content/metadata from {len(extracted_payloads)} items"
+                + (f" ({methods_summary})" if methods_summary else "")
+            )
         ))
         job.progress = 55
         db.commit()

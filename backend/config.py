@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     FIRECRAWL_API_KEY: Optional[str] = None
     YOUTUBE_API_KEY: Optional[str] = None
 
+    # Article extraction tuning (prioritize free HTTPX before paid Firecrawl fallback)
+    ARTICLE_MIN_CONTENT_LENGTH: int = 200
+
     # Optional Bearer/API token for authenticated sensitive endpoints (e.g. LinkedIn enrichment)
     API_AUTH_TOKEN: Optional[str] = None
 
