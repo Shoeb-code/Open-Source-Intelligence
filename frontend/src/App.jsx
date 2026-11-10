@@ -13,9 +13,6 @@ import {
   Activity,
   Link2,
   Sparkles,
-  ArrowRight,
-  Search,
-  CheckCircle2,
   Menu,
   UserCheck
 } from 'lucide-react';
@@ -130,16 +127,25 @@ export default function App() {
     if (!personId) return;
     setLoadingData(true);
     try {
-      const [rep, apps, tm, srcs] = await Promise.allSettled([
+      const [personRes, rep, apps, tm, srcs] = await Promise.allSettled([
+        api.getPerson(personId),
         api.getReport(personId),
         api.getAppearances(personId),
         api.getTimeline(personId),
         api.getSources(personId),
       ]);
 
+      if (personRes.status === 'fulfilled' && personRes.value) {
+        const freshPerson = personRes.value;
+        setPersons((prev) => prev.map((p) => (p.id === personId ? freshPerson : p)));
+      }
+
       // Guard: Only apply results if the user has not switched to another person while waiting
       setSelectedPersonId((currId) => {
         if (currId === personId) {
+          if (personRes.status === 'fulfilled' && personRes.value) {
+            setSelectedPerson(personRes.value);
+          }
           setReportData(rep.status === 'fulfilled' ? rep.value : null);
           setAppearances(apps.status === 'fulfilled' ? apps.value : []);
           setTimeline(tm.status === 'fulfilled' ? tm.value : []);
@@ -468,14 +474,23 @@ export default function App() {
                     {/* --- TAB 0: TARGET ACCOUNT PROFILE & SOCIALS MODULE --- */}
                     {activeTab === 'account' && (
                       <TargetAccountPage
+                        key={selectedPerson.id}
                         person={selectedPerson}
                         appearances={appearances}
-                        sources={sources}
-                        reportData={reportData}
                         onStartResearch={handleStartResearch}
                         isResearching={isResearching}
                         onOpenUrlModal={() => setShowUrlUploadModal(true)}
                         onDeleteAppearance={handleDeleteAppearance}
+                        onEnrichLinkedIn={async (personId, force = false) => {
+                          const res = await api.enrichLinkedInProfile(personId, { force });
+                          const refreshed = await api.getPerson(personId);
+                          setPersons((prev) => prev.map((p) => (p.id === personId ? refreshed : p)));
+                          setSelectedPersonId((curr) => {
+                            if (curr === personId) setSelectedPerson(refreshed);
+                            return curr;
+                          });
+                          return res;
+                        }}
                       />
                     )}
 

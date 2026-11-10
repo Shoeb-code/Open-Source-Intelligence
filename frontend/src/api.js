@@ -128,4 +128,17 @@ export const api = {
     }
     return true;
   },
+
+  async enrichLinkedInProfile(personId, { force = false, profile_url = null } = {}) {
+    const res = await fetch(`${API_BASE}/linkedin/enrich/${personId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force, profile_url }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to enrich LinkedIn profile');
+    }
+    return res.json();
+  },
 };

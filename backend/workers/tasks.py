@@ -183,6 +183,8 @@ def execute_research_pipeline(job_id: str):
                             profile_url=primary.canonical_url,
                             verification_status="VERIFIED"
                         ))
+                    elif existing_li.verification_status != "VERIFIED":
+                        existing_li.verification_status = "VERIFIED"
                 elif "instagram.com/" in target_url and not any(p in target_url for p in ("/p/", "/reel/", "/tv/")):
                     existing_ig = db.query(SocialProfile).filter(
                         SocialProfile.person_id == job.person_id,

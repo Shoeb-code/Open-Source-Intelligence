@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     FIRECRAWL_API_KEY: Optional[str] = None
     YOUTUBE_API_KEY: Optional[str] = None
 
+    # Optional Bearer/API token for authenticated sensitive endpoints (e.g. LinkedIn enrichment)
+    API_AUTH_TOKEN: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

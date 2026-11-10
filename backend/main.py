@@ -5,6 +5,7 @@ from backend.config import settings
 from backend.database.connection import init_db
 from backend.modules.persons.router import router as persons_router
 from backend.modules.reports.router import research_router, person_reports_router
+from backend.modules.enrichment.router import linkedin_router
 from backend.utils.logger import logger
 
 
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(persons_router, prefix=settings.API_V1_PREFIX)
 app.include_router(research_router, prefix=settings.API_V1_PREFIX)
 app.include_router(person_reports_router, prefix=settings.API_V1_PREFIX)
+app.include_router(linkedin_router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", tags=["Health"])

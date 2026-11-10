@@ -38,6 +38,7 @@ pnpm-debug.log*
 *.sqlite
 *.sqlite3
 appearance_intelligence.db
+*_enrichlayer_response.json
 
 # Logs & Process Artifacts
 logs/

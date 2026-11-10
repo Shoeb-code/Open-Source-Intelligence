@@ -1,6 +1,6 @@
 from datetime import datetime
-from typing import Optional, List, Dict
-from pydantic import BaseModel, Field, HttpUrl, ConfigDict
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class SocialProfileCreate(BaseModel):
@@ -47,8 +47,23 @@ class PersonUpdate(BaseModel):
 class PersonResponse(BaseModel):
     id: str
     name: str
-    profession: Optional[str]
-    biography: Optional[str]
+    profession: Optional[str] = None
+    biography: Optional[str] = None
+    headline: Optional[str] = None
+    occupation: Optional[str] = None
+    location: Optional[str] = None
+    profile_pic_url: Optional[str] = None
+    follower_count: Optional[int] = None
+    connections: Optional[int] = None
+    summary: Optional[str] = None
+    experiences: Optional[List[Dict[str, Any]]] = None
+    education: Optional[List[Dict[str, Any]]] = None
+    projects: Optional[List[Dict[str, Any]]] = None
+    activities: Optional[List[Dict[str, Any]]] = None
+    skills: Optional[List[str]] = None
+    certifications: Optional[List[Dict[str, Any]]] = None
+    profile_enriched_at: Optional[datetime] = None
+    enrichment_status: Optional[str] = "NOT_ENRICHED"
     social_profiles: List[SocialProfileResponse] = []
     created_at: datetime
     updated_at: datetime
