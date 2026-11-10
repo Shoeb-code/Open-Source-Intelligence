@@ -27,6 +27,7 @@ import AIInsightsPanel from './AIInsightsPanel';
 export default function TargetAccountPage({
   person,
   appearances = [],
+  sources = [],
   insightsHistory = null,
   onStartResearch,
   isResearching = false,
@@ -476,7 +477,10 @@ export default function TargetAccountPage({
       {/* ============================================================== */}
       {sectionTab === 'ai_insights' ? (
         <AIInsightsPanel
+          person={person}
           personName={person?.name}
+          appearances={appearances}
+          sources={sources}
           insightsHistory={insightsHistory}
           onGenerateInsights={(focusNotes) => onGenerateInsights && onGenerateInsights(person.id, focusNotes)}
         />

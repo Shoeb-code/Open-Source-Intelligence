@@ -22,7 +22,7 @@ from backend.utils.logger import logger
 from backend.utils.url_validator import canonicalize_url
 
 _MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-ALEXANDRIA_SCRAPE_URL = "https://api.firecrawl.dev/v2/scrape"
+ALEXANDRIA_SCRAPE_URL ="https://api.firecrawl.dev/v2/scrape"
 
 
 class LinkedInEnrichmentError(Exception):

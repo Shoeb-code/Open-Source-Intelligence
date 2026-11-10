@@ -40,6 +40,9 @@ pnpm-debug.log*
 appearance_intelligence.db
 *_enrichlayer_response.json
 
+# Generated Manager Exports
+exports/
+
 # Logs & Process Artifacts
 logs/
 *.log

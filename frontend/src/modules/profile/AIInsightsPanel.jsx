@@ -16,6 +16,8 @@ import {
   Clock,
   AlertTriangle
 } from 'lucide-react';
+import DownloadMenu from './DownloadMenu';
+import { downloadPersonReport } from '../../utils/exportReport';
 
 const SECTION_CONFIG = [
   {
@@ -101,7 +103,10 @@ function ClaimTypePill({ claimType }) {
 }
 
 export default function AIInsightsPanel({
+  person = null,
   personName,
+  appearances = [],
+  sources = [],
   insightsHistory,
   onGenerateInsights,
 }) {
@@ -190,6 +195,22 @@ export default function AIInsightsPanel({
                 </>
               )}
             </button>
+
+            <DownloadMenu
+              personName={personName}
+              disabled={!activeReport || generating}
+              buttonLabel="Download"
+              buttonClassName="btn btn-secondary text-xs sm:text-sm px-3.5 py-2.5"
+              onDownloadPerson={(format) =>
+                downloadPersonReport({
+                  format,
+                  person: person || { name: personName },
+                  appearances,
+                  sources,
+                  insightsReport: activeReport,
+                })
+              }
+            />
           </div>
         </div>
 

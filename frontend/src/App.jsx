@@ -29,6 +29,8 @@ import AppearanceList from './modules/appearances/AppearanceList';
 import TimelineView from './modules/timeline/TimelineView';
 import SourcesTable from './modules/sources/SourcesTable';
 import TargetAccountPage from './modules/profile/TargetAccountPage';
+import DownloadMenu from './modules/profile/DownloadMenu';
+import { downloadPersonReport, downloadAllTargetsReport } from './utils/exportReport';
 
 export default function App() {
   const [backendOnline, setBackendOnline] = useState(false);
@@ -254,6 +256,32 @@ export default function App() {
     return created;
   }
 
+  // 8. Export / Download Reports straight to browser Downloads folder
+  async function handleDownloadAllTargets(format) {
+    try {
+      const targetList = persons.length > 0 ? persons : await api.getPersons();
+      const bundles = await Promise.all(
+        targetList.map(async (p) => {
+          const [personRes, appsRes, srcsRes, insRes] = await Promise.allSettled([
+            api.getPerson(p.id),
+            api.getAppearances(p.id),
+            api.getSources(p.id),
+            api.getInsights(p.id),
+          ]);
+          return {
+            person: personRes.status === 'fulfilled' ? personRes.value : p,
+            appearances: appsRes.status === 'fulfilled' ? appsRes.value : [],
+            sources: srcsRes.status === 'fulfilled' ? srcsRes.value : [],
+            insightsReport: insRes.status === 'fulfilled' ? insRes.value?.latest_report || null : null,
+          };
+        })
+      );
+      downloadAllTargetsReport({ format, bundles });
+    } catch (err) {
+      alert(`Failed to export reports: ${err.message}`);
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-white text-slate-900 font-sans">
       {/* --- SIMPLE CLEAN TOP NAVBAR --- */}
@@ -383,6 +411,21 @@ export default function App() {
                     <span>Add Link</span>
                   </button>
 
+                  <DownloadMenu
+                    personName={selectedPerson.name}
+                    personsCount={persons.length}
+                    onDownloadPerson={(format) =>
+                      downloadPersonReport({
+                        format,
+                        person: selectedPerson,
+                        appearances,
+                        sources,
+                        insightsReport: insightsHistory?.latest_report || null,
+                      })
+                    }
+                    onDownloadAll={handleDownloadAllTargets}
+                  />
+
                   <button
                     onClick={handleStartResearch}
                     disabled={isSelectedResearching}
@@ -476,6 +519,7 @@ export default function App() {
                         key={selectedPerson.id}
                         person={selectedPerson}
                         appearances={appearances}
+                        sources={sources}
                         insightsHistory={insightsHistory}
                         onStartResearch={handleStartResearch}
                         isResearching={isSelectedResearching}
