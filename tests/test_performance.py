@@ -174,7 +174,7 @@ def test_domain_aware_scheduler_prevents_head_of_line_blocking(monkeypatch):
 
 def test_404_skips_firecrawl_fallback(monkeypatch):
     monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
-    post_called = False
+    post_calls = []
 
     class _Fake404Client:
         def __init__(self, *args, **kwargs):
@@ -187,16 +187,19 @@ def test_404_skips_firecrawl_fallback(monkeypatch):
             return False
 
         def get(self, url, headers=None, **kwargs):
+            raise AssertionError("Direct HTTPX GET should not be called in firecrawl_only mode")
+
+        def post(self, url, json=None, headers=None, **kwargs):
+            post_calls.append(url)
+
             class _Resp:
-                status_code = 404
-                text = "Not Found"
+                status_code = 200
+                text = "{}"
+
+                def json(self):
+                    return {"success": True, "data": {"markdown": "", "metadata": {"statusCode": 404}}}
 
             return _Resp()
-
-        def post(self, *args, **kwargs):
-            nonlocal post_called
-            post_called = True
-            raise AssertionError("Firecrawl should NOT be called on HTTP 404")
 
     monkeypatch.setattr(httpx, "Client", _Fake404Client)
 
@@ -204,7 +207,7 @@ def test_404_skips_firecrawl_fallback(monkeypatch):
     assert content is None
     assert status == "FAILED"
     assert method == "failed"
-    assert post_called is False
+    assert post_calls == ["https://api.firecrawl.dev/v2/scrape"]
 
 
 def test_youtube_bulk_vs_direct_whisper_control(monkeypatch):
@@ -337,16 +340,18 @@ def test_execute_research_pipeline_end_to_end_with_concurrent_analysis(monkeypat
         verify_db.close()
 
 
-def test_gated_social_and_binary_urls_skip_firecrawl_fallback(monkeypatch):
+def test_gated_social_and_binary_urls_handled_without_httpx_get(monkeypatch):
     monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
     monkeypatch.setattr(settings, "EXA_API_KEY", None)
-    post_called = False
+    post_urls = []
 
     class _MockResponse:
-        def __init__(self, status_code, text="", content_type="text/html"):
+        def __init__(self, status_code, json_data=None):
             self.status_code = status_code
-            self.text = text
-            self.headers = {"content-type": content_type}
+            self._json = json_data or {}
+
+        def json(self):
+            return self._json
 
     class _FakeClient:
         def __init__(self, *args, **kwargs):
@@ -359,14 +364,14 @@ def test_gated_social_and_binary_urls_skip_firecrawl_fallback(monkeypatch):
             return False
 
         def get(self, url, headers=None, **kwargs):
-            if url.endswith(".png"):
-                return _MockResponse(200, text="binary", content_type="image/png")
-            return _MockResponse(999, text="Request denied")
+            raise AssertionError(f"Direct HTTPX GET should not run for {url}")
 
-        def post(self, *args, **kwargs):
-            nonlocal post_called
-            post_called = True
-            raise AssertionError("Firecrawl should NOT be called for gated social or binary URLs")
+        def post(self, url, headers=None, json=None, **kwargs):
+            post_urls.append(url)
+            return _MockResponse(
+                200,
+                json_data={"success": True, "data": {"markdown": "Join LinkedIn to view full profile", "metadata": {"statusCode": 999}}},
+            )
 
     monkeypatch.setattr(httpx, "Client", _FakeClient)
 
@@ -376,14 +381,16 @@ def test_gated_social_and_binary_urls_skip_firecrawl_fallback(monkeypatch):
     assert content is None
     assert status == "RESTRICTED"
     assert method == "failed"
+    assert post_urls == ["https://api.firecrawl.dev/v2/scrape"]
 
+    post_urls.clear()
     content_img, status_img, _, _, method_img = ArticleExtractor.extract_article_with_method(
-        "https://example.org/banner.png"
+        "https://example.org/banner.png?size=large"
     )
     assert content_img is None
     assert status_img == "FAILED"
     assert method_img == "failed"
-    assert post_called is False
+    assert post_urls == []
 
 
 def test_youtube_ip_block_skips_list_retry_and_uses_cooldown(monkeypatch):
@@ -457,36 +464,26 @@ def test_youtube_fast_watch_metadata_avoids_ytdlp(monkeypatch):
     assert "AI infrastructure and enterprise cloud scaling" in desc
 
 
-def test_linkedin_post_public_html_extracts_without_api_fallback(monkeypatch):
+def test_linkedin_post_firecrawl_extracts_without_exa_fallback(monkeypatch):
     monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
     monkeypatch.setattr(settings, "EXA_API_KEY", "exa-test-key")
-
-    linkedin_post_html = """
-    <html>
-      <head>
-        <title>In 2008 we began CarDekho Group | Amit Jain | LinkedIn</title>
-        <script type="application/ld+json">
-          {
-            "@context": "http://schema.org",
-            "@type": "SocialMediaPosting",
-            "headline": "Building AI-driven mobility solutions at Auto Expo 2025",
-            "articleBody": "In 2008, we began CarDekho Group with a simple goal: make car buying easy and transparent."
-          }
-        </script>
-      </head>
-      <body>
-        <div class="sign-in-modal">
-          <p>Sign in to view more content</p>
-          <input type="password" name="session_password" />
-        </div>
-      </body>
-    </html>
-    """
+    posted_urls = []
 
     class _PostResp:
         status_code = 200
-        text = linkedin_post_html
-        headers = {"content-type": "text/html"}
+
+        def json(self):
+            return {
+                "success": True,
+                "data": {
+                    "markdown": "In 2008, we began CarDekho Group with a simple goal: make car buying easy and transparent.",
+                    "metadata": {
+                        "title": "Building AI-driven mobility solutions | Amit Jain | LinkedIn",
+                        "ogSiteName": "LinkedIn",
+                        "statusCode": 200,
+                    },
+                },
+            }
 
     class _FakeClient:
         def __init__(self, *args, **kwargs):
@@ -499,10 +496,13 @@ def test_linkedin_post_public_html_extracts_without_api_fallback(monkeypatch):
             return False
 
         def get(self, url, headers=None, **kwargs):
-            return _PostResp()
+            raise AssertionError("Direct HTTPX GET must never run for LinkedIn URLs")
 
-        def post(self, *args, **kwargs):
-            raise AssertionError("Paid fallback APIs must not run when public LinkedIn JSON-LD succeeds")
+        def post(self, url, headers=None, json=None, **kwargs):
+            posted_urls.append(url)
+            if "api.exa.ai" in url:
+                raise AssertionError("Exa fallback must not run when Firecrawl v2 extraction succeeds")
+            return _PostResp()
 
     monkeypatch.setattr(httpx, "Client", _FakeClient)
 
@@ -510,24 +510,23 @@ def test_linkedin_post_public_html_extracts_without_api_fallback(monkeypatch):
         "https://www.linkedin.com/posts/cardekhoamitjain_autoexpo2025-activity-7287810557338959872-8bzy"
     )
     assert status == "SUCCESS"
-    assert method == "httpx"
+    assert method == "firecrawl"
     assert publisher == "LinkedIn"
     assert "CarDekho Group" in (content or "")
     assert "transparent" in (content or "")
-    assert title is not None and "LinkedIn" not in title
+    assert title == "Building AI-driven mobility solutions | Amit Jain"
+    assert posted_urls == ["https://api.firecrawl.dev/v2/scrape"]
 
 
-def test_linkedin_999_falls_back_to_exa_contents_not_firecrawl(monkeypatch):
+def test_linkedin_blocked_firecrawl_falls_back_to_exa_contents(monkeypatch):
     monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
     monkeypatch.setattr(settings, "EXA_API_KEY", "exa-test-key")
     posted_urls = []
 
     class _Resp:
-        def __init__(self, status_code, text="", json_data=None):
+        def __init__(self, status_code, json_data=None):
             self.status_code = status_code
-            self.text = text
-            self._json = json_data
-            self.headers = {"content-type": "text/html"}
+            self._json = json_data or {}
 
         def json(self):
             return self._json
@@ -543,12 +542,12 @@ def test_linkedin_999_falls_back_to_exa_contents_not_firecrawl(monkeypatch):
             return False
 
         def get(self, url, headers=None, **kwargs):
-            return _Resp(999, text="Request denied")
+            raise AssertionError("Direct HTTPX GET must never run for LinkedIn URLs")
 
         def post(self, url, headers=None, json=None, **kwargs):
             posted_urls.append(url)
             if "api.firecrawl.dev" in url:
-                raise AssertionError("Firecrawl should NOT be called for blocked LinkedIn URLs")
+                return _Resp(403, json_data={"error": "Blocked"})
             return _Resp(
                 200,
                 json_data={
@@ -571,7 +570,7 @@ def test_linkedin_999_falls_back_to_exa_contents_not_firecrawl(monkeypatch):
     assert publisher == "LinkedIn"
     assert "Auto Expo 2025" in (content or "")
     assert title == "Auto Expo AI Mobility Launch | Amit Jain"
-    assert posted_urls == ["https://api.exa.ai/contents"]
+    assert posted_urls == ["https://api.firecrawl.dev/v2/scrape", "https://api.exa.ai/contents"]
 
 
 def test_refresh_failed_linkedin_sources_updates_in_place(monkeypatch):
@@ -636,6 +635,124 @@ def test_refresh_failed_linkedin_sources_updates_in_place(monkeypatch):
         assert "AI mobility" in (src.extracted_content or "")
         assert app.title == "CarDekho AI Mobility Launch"
         assert app.analysis is not None
+    finally:
+        db.close()
+
+
+def test_linkedin_insufficient_firecrawl_shell_uses_exa_fallback(monkeypatch):
+    monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
+    monkeypatch.setattr(settings, "EXA_API_KEY", "exa-test-key")
+    posted_urls = []
+
+    class _Resp:
+        def __init__(self, status_code, json_data=None):
+            self.status_code = status_code
+            self._json = json_data or {}
+
+        def json(self):
+            return self._json
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, headers=None, **kwargs):
+            raise AssertionError("Direct HTTPX GET must never run for thin LinkedIn URLs")
+
+        def post(self, url, headers=None, json=None, **kwargs):
+            posted_urls.append(url)
+            if "api.firecrawl.dev" in url:
+                return _Resp(200, json_data={"success": True, "data": {"markdown": "Preview", "metadata": {"statusCode": 200}}})
+            return _Resp(
+                200,
+                json_data={
+                    "results": [
+                        {
+                            "title": "LinkedIn AI Keynote Post",
+                            "text": "Full keynote reflections on enterprise AI transformation and scaling workflows.",
+                        }
+                    ]
+                },
+            )
+
+    monkeypatch.setattr(httpx, "Client", _FakeClient)
+
+    content, status, _, publisher, method = ArticleExtractor.extract_article_with_method(
+        "https://www.linkedin.com/posts/amit-jain-thin-activity-999"
+    )
+    assert status == "SUCCESS"
+    assert method == "exa_contents"
+    assert publisher == "LinkedIn"
+    assert "enterprise AI transformation" in (content or "")
+    assert posted_urls == ["https://api.firecrawl.dev/v2/scrape", "https://api.exa.ai/contents"]
+
+
+def test_refresh_failed_linkedin_sources_preserves_existing_success(monkeypatch):
+    from backend.workers.tasks import _refresh_failed_linkedin_sources
+    from backend.modules.analysis.summarizer import AppearanceSummarizer
+
+    db = TestingSessionLocal()
+    try:
+        person = Person(name="Amit Jain", profession="Co-Founder & CEO at CarDekho")
+        db.add(person)
+        db.flush()
+
+        app = Appearance(
+            person_id=person.id,
+            appearance_type="LINKEDIN_POST",
+            title="Saved LinkedIn Post",
+            publisher="LinkedIn",
+            identity_status="VERIFIED",
+            confidence_score=0.95,
+        )
+        db.add(app)
+        db.flush()
+
+        src_ok = Source(
+            appearance_id=app.id,
+            source_url="https://www.linkedin.com/posts/amit-jain-saved",
+            canonical_url="https://www.linkedin.com/posts/amit-jain-saved",
+            source_type="LINKEDIN",
+            extraction_status="SUCCESS",
+            extracted_content="Previously extracted full LinkedIn post content.",
+        )
+        src_failed = Source(
+            appearance_id=app.id,
+            source_url="https://www.linkedin.com/posts/amit-jain-failed-again",
+            canonical_url="https://www.linkedin.com/posts/amit-jain-failed-again",
+            source_type="LINKEDIN",
+            extraction_status="FAILED",
+            extracted_content=None,
+        )
+        db.add_all([src_ok, src_failed])
+        db.commit()
+
+        monkeypatch.setattr(
+            ArticleExtractor,
+            "extract_article",
+            classmethod(lambda cls, url: (None, "FAILED", None, "LinkedIn")),
+        )
+
+        ctx = IdentityContext(
+            person_id=person.id,
+            name="Amit Jain",
+            profession="Co-Founder & CEO at CarDekho",
+            organizations=["CarDekho"],
+            known_usernames=[],
+            profile_urls={},
+        )
+        refreshed = _refresh_failed_linkedin_sources(db, person.id, ctx, AppearanceSummarizer())
+        assert refreshed == 0
+
+        db.refresh(src_ok)
+        assert src_ok.extraction_status == "SUCCESS"
+        assert src_ok.extracted_content == "Previously extracted full LinkedIn post content."
     finally:
         db.close()
 

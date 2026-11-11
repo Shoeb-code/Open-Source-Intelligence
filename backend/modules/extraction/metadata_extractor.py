@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 from pydantic import BaseModel
 from backend.modules.collectors.youtube import DiscoveredItem
 from backend.modules.extraction.transcript_extractor import TranscriptExtractor
 from backend.modules.extraction.article_extractor import ArticleExtractor
+from backend.utils.logger import logger
 from backend.utils.text_cleaner import compute_content_hash, clean_text
 from backend.utils.url_validator import canonicalize_url
 
@@ -19,7 +20,8 @@ class ExtractedPayload(BaseModel):
     extracted_content: Optional[str] = None
     content_hash: Optional[str] = None
     extraction_status: str  # SUCCESS, TRANSCRIPT_UNAVAILABLE, RESTRICTED, FAILED
-    extraction_method: Optional[str] = None  # httpx, firecrawl, youtube_transcript, metadata_fallback, failed
+    extraction_method: Optional[str] = None  # firecrawl, exa_contents, youtube_transcript, metadata_fallback, failed
+    extraction_details: Optional[Dict[str, Any]] = None
 
 
 class MetadataExtractor:
@@ -33,6 +35,8 @@ class MetadataExtractor:
         extraction_method: Optional[str] = None
         title = item.title
         publisher = item.publisher
+
+        extraction_details: Optional[Dict[str, Any]] = None
 
         source_type = (item.source_type or "WEBPAGE").upper()
 
@@ -58,13 +62,17 @@ class MetadataExtractor:
         elif source_type in ("NEWS", "PODCAST", "EVENT", "WEBPAGE", "BLOG", "ARTICLE", "LINKEDIN", "INSTAGRAM"):
             content, status, page_title, page_pub = ArticleExtractor.extract_article(canonical_url)
             extraction_method = ArticleExtractor.get_last_extraction_method() or (
-                "httpx" if status == "SUCCESS" else "failed"
+                "firecrawl" if status == "SUCCESS" else "failed"
             )
+            extraction_details = ArticleExtractor.get_last_extraction_details()
             if not content and item.description:
                 content = clean_text(item.description)
                 if status in ("PENDING", "RESTRICTED", "FAILED"):
                     status = "METADATA_FALLBACK"
                     extraction_method = "metadata_fallback"
+                    logger.info(
+                        f"[EXTRACTION] URL: {canonical_url} | [FALLBACK] METADATA_FALLBACK | [CONTENT_LENGTH] {len(content)}"
+                    )
             if page_title and (not title or title == "Uploaded Media Appearance"):
                 title = page_title
             if page_pub and not publisher:
@@ -89,5 +97,6 @@ class MetadataExtractor:
             content_hash=content_hash,
             extraction_status=status,
             extraction_method=extraction_method,
+            extraction_details=extraction_details,
         )
 

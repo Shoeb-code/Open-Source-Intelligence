@@ -30,7 +30,13 @@ class Settings(BaseSettings):
     FIRECRAWL_API_KEY: Optional[str] = None
     YOUTUBE_API_KEY: Optional[str] = None
 
-    # Article extraction tuning (prioritize free HTTPX before paid Firecrawl fallback)
+    # Website Scraping (Firecrawl v2 primary) & Article Quality Tuning
+    FIRECRAWL_SCRAPE_URL: str = "https://api.firecrawl.dev/v2/scrape"
+    FIRECRAWL_TIMEOUT_SECONDS: float = 20.0
+    FIRECRAWL_CONNECT_TIMEOUT_SECONDS: float = 5.0
+    FIRECRAWL_MAX_CONCURRENCY: int = 4
+    FIRECRAWL_ONLY_MAIN_CONTENT: bool = True
+    EXTRACTION_MODE: str = "firecrawl_only"
     ARTICLE_MIN_CONTENT_LENGTH: int = 200
 
     # Discovery & Extraction Concurrency Controls
