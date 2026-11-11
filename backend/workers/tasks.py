@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import urlparse
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -15,6 +16,7 @@ from backend.modules.persons.schemas import IdentityContext
 from backend.modules.persons.service import build_identity_context
 from backend.modules.collectors.youtube import DiscoveredItem
 from backend.modules.discovery.service import DiscoveryService
+from backend.modules.extraction.article_extractor import ArticleExtractor
 from backend.modules.extraction.metadata_extractor import ExtractedPayload, MetadataExtractor
 from backend.modules.identity.verifier import IdentityVerifier
 from backend.modules.deduplication.deduplicator import DeduplicationGroup, Deduplicator
@@ -22,6 +24,7 @@ from backend.modules.analysis.classifier import AppearanceClassifier
 from backend.modules.analysis.summarizer import AIAnalysisResult, AppearanceSummarizer
 from backend.workers.celery_app import celery_app
 from backend.utils.logger import logger
+from backend.utils.text_cleaner import compute_content_hash
 from backend.utils.url_validator import canonicalize_url, extract_youtube_video_id
 
 
@@ -184,6 +187,106 @@ def _analyze_groups_concurrently(
     return results
 
 
+def _refresh_failed_linkedin_sources(
+    db: Session,
+    person_id: str,
+    context: IdentityContext,
+    summarizer: AppearanceSummarizer,
+) -> int:
+    """
+    Retries previously failed/restricted empty LinkedIn sources in-place so existing records
+    populate post/profile content without duplicating appearances.
+    """
+    stale_rows = (
+        db.query(Source, Appearance)
+        .join(Appearance, Source.appearance_id == Appearance.id)
+        .filter(
+            Appearance.person_id == person_id,
+            Source.extraction_status.in_(("FAILED", "RESTRICTED")),
+            or_(Source.extracted_content.is_(None), Source.extracted_content == ""),
+            Source.canonical_url.ilike("%linkedin.com%"),
+        )
+        .all()
+    )
+    if not stale_rows:
+        return 0
+
+    work_items = [
+        (
+            idx,
+            src.canonical_url or src.source_url,
+            app.title,
+            app.publisher or "LinkedIn",
+            app.published_at,
+            src.source_type or "LINKEDIN",
+            app.identity_status,
+            app.analysis is None,
+        )
+        for idx, (src, app) in enumerate(stale_rows)
+        if (src.canonical_url or src.source_url)
+    ]
+    if not work_items:
+        return 0
+
+    def _retry_one(entry):
+        idx, target_url, title, pub, pub_at, src_type, identity_status, needs_analysis = entry
+        try:
+            text, status, page_title, page_pub = ArticleExtractor.extract_article(target_url)
+            analysis_res = None
+            if text and status == "SUCCESS" and needs_analysis and identity_status in ("VERIFIED", "LIKELY_MATCH", "NEEDS_REVIEW"):
+                payload = ExtractedPayload(
+                    title=page_title or title or "LinkedIn Post",
+                    source_url=target_url,
+                    canonical_url=canonicalize_url(target_url),
+                    source_type=src_type,
+                    publisher=page_pub or pub or "LinkedIn",
+                    published_at=pub_at,
+                    description=None,
+                    extracted_content=text,
+                    content_hash=compute_content_hash(text),
+                    extraction_status=status,
+                )
+                analysis_res = summarizer.analyze(context, payload)
+            return idx, text, status, page_title, page_pub, analysis_res
+        except Exception as e:
+            logger.warning(f"Failed refreshing LinkedIn source {target_url}: {e}")
+            return idx, None, None, None, None, None
+
+    workers = max(1, min(len(work_items), 4))
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        retry_results = list(executor.map(_retry_one, work_items))
+
+    refreshed = 0
+    for idx, text, status, page_title, page_pub, analysis_res in retry_results:
+        if not text or status != "SUCCESS":
+            continue
+        src, app = stale_rows[idx]
+        src.extracted_content = text
+        src.extraction_status = "SUCCESS"
+        src.content_hash = compute_content_hash(text)
+        if page_title and (not app.title or app.title == "LinkedIn Publication"):
+            app.title = page_title
+        if not app.publisher:
+            app.publisher = page_pub or "LinkedIn"
+        if not app.description:
+            app.description = text[:500]
+        if analysis_res is not None and app.analysis is None:
+            db.add(AppearanceAnalysis(
+                appearance_id=app.id,
+                summary=analysis_res.summary,
+                topics=analysis_res.topics,
+                key_points=analysis_res.key_points,
+                person_role=analysis_res.person_role,
+                evidence=analysis_res.evidence,
+                model_name=analysis_res.model_name,
+            ))
+        refreshed += 1
+
+    if refreshed:
+        db.commit()
+    return refreshed
+
+
 @celery_app.task(name="execute_research_pipeline")
 def execute_research_pipeline(job_id: str):
     """
@@ -233,6 +336,8 @@ def execute_research_pipeline(job_id: str):
             return
 
         # --- STEP 1.5: PRE-DEDUP & EXISTING DB FILTER ---
+        summarizer = AppearanceSummarizer()
+        refreshed_linkedin_count = _refresh_failed_linkedin_sources(db, job.person_id, context, summarizer)
         items_to_extract, skipped_duplicates, existing_urls = _filter_new_candidates(
             db, job.person_id, discovered_items
         )
@@ -246,14 +351,21 @@ def execute_research_pipeline(job_id: str):
                 source="ContentExtractionEngine",
                 status="SUCCESS",
                 execution_time=0.0,
-                error_message=f"Skipped extraction: all {skipped_duplicates} discovered URL(s) already stored or duplicated."
+                error_message=(
+                    f"Skipped extraction: all {skipped_duplicates} discovered URL(s) already stored or duplicated."
+                    + (f" Refreshed {refreshed_linkedin_count} LinkedIn source(s)." if refreshed_linkedin_count else "")
+                )
             ))
             db.add(CollectionLog(
                 job_id=job.id,
                 source="PipelineCoordinator",
                 status="SUCCESS",
                 execution_time=total_time,
-                error_message="Pipeline complete. Stored 0 new appearances (all candidates already present)."
+                error_message=(
+                    f"Pipeline complete. Stored 0 new appearances (all candidates already present"
+                    + (f"; refreshed {refreshed_linkedin_count} LinkedIn source(s)" if refreshed_linkedin_count else "")
+                    + ")."
+                )
             ))
             job.status = "COMPLETED"
             job.progress = 100
@@ -308,7 +420,6 @@ def execute_research_pipeline(job_id: str):
         db.commit()
 
         # --- STEP 4: CONCURRENT STAGE-1 AI ANALYSIS ---
-        summarizer = AppearanceSummarizer()
         analysis_results = _analyze_groups_concurrently(verified_groups, context, summarizer)
         job.progress = 90
         db.commit()

@@ -1,7 +1,8 @@
+import json
 import re
 from contextvars import ContextVar
 from typing import Optional, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 import httpx
 from bs4 import BeautifulSoup
 from backend.config import settings
@@ -104,8 +105,9 @@ _GATED_SOCIAL_HOSTS = ("linkedin.com", "instagram.com", "facebook.com")
 
 
 def _redact_api_key(text: str) -> str:
-    if settings.FIRECRAWL_API_KEY and settings.FIRECRAWL_API_KEY in text:
-        return text.replace(settings.FIRECRAWL_API_KEY, "[REDACTED]")
+    for secret in (settings.FIRECRAWL_API_KEY, settings.EXA_API_KEY):
+        if secret and secret in text:
+            text = text.replace(secret, "[REDACTED]")
     return text
 
 
@@ -237,11 +239,147 @@ class ArticleExtractor:
 
         return True, None
 
+    @staticmethod
+    def _is_linkedin_url(url: str) -> bool:
+        host = (urlparse(url).netloc or "").lower()
+        return host == "linkedin.com" or host.endswith(".linkedin.com")
+
+    @staticmethod
+    def _normalize_fetch_url(url: str) -> str:
+        """Upgrades bare linkedin.com host to www.linkedin.com so public HTML & JSON-LD load without bare-host authwall."""
+        try:
+            parsed = urlparse(url)
+            if parsed.netloc.lower() == "linkedin.com":
+                return urlunparse(parsed._replace(netloc="www.linkedin.com"))
+        except Exception:
+            pass
+        return url
+
+    @classmethod
+    def _extract_linkedin_public_html(
+        cls,
+        soup: BeautifulSoup,
+        page_title: Optional[str],
+        publisher: Optional[str],
+        url: str,
+    ) -> Optional[Tuple[str, str, Optional[str], Optional[str], Optional[str]]]:
+        """
+        Extracts public LinkedIn post commentary, JSON-LD SocialMediaPosting bodies, and public /in/ summaries.
+        Runs before page-wide password-form checks because LinkedIn embeds a hidden sign-in modal on public pages.
+        """
+        ld_nodes = []
+        for tag in soup.find_all("script", type="application/ld+json"):
+            raw = tag.string or tag.get_text()
+            if not raw:
+                continue
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                continue
+            if isinstance(parsed, dict):
+                if isinstance(parsed.get("@graph"), list):
+                    ld_nodes.extend(n for n in parsed["@graph"] if isinstance(n, dict))
+                ld_nodes.append(parsed)
+            elif isinstance(parsed, list):
+                ld_nodes.extend(n for n in parsed if isinstance(n, dict))
+
+        best_body = ""
+        resolved_title = page_title
+        resolved_pub = publisher or "LinkedIn"
+
+        for node in ld_nodes:
+            raw_type = node.get("@type")
+            types = raw_type if isinstance(raw_type, list) else [raw_type]
+            if any(t in ("SocialMediaPosting", "DiscussionForumPosting", "Article", "NewsArticle", "BlogPosting") for t in types):
+                candidate = clean_text(
+                    str(
+                        node.get("articleBody")
+                        or node.get("text")
+                        or node.get("description")
+                        or node.get("headline")
+                        or ""
+                    )
+                )
+                if len(candidate) > len(best_body):
+                    best_body = candidate
+                headline = clean_text(str(node.get("headline") or ""))
+                if headline and (not resolved_title or "sign in" in resolved_title.lower()):
+                    resolved_title = headline
+
+        dom_post = soup.select_one(
+            ".attributed-text-segment-list__content, "
+            "[data-test-id='main-feed-activity-card__commentary'], "
+            ".share-update-card__update-text, "
+            "[data-test-id='feed-post-text']"
+        )
+        if dom_post:
+            dom_text = clean_text(dom_post.get_text("\n", strip=True))
+            if len(dom_text) > len(best_body):
+                best_body = dom_text
+
+        is_profile = "/in/" in (url or "").lower()
+        if not best_body and is_profile:
+            profile_parts = []
+            for node in ld_nodes:
+                if node.get("@type") == "Person":
+                    name = clean_text(str(node.get("name") or ""))
+                    if name and not resolved_title:
+                        resolved_title = name
+                    titles = node.get("jobTitle")
+                    if isinstance(titles, list):
+                        titles = ", ".join(str(x) for x in titles if x)
+                    if titles:
+                        profile_parts.append(f"Role: {clean_text(str(titles))}")
+                    works = node.get("worksFor")
+                    if isinstance(works, list):
+                        org_names = [w.get("name") for w in works if isinstance(w, dict) and w.get("name")]
+                        if org_names:
+                            profile_parts.append(f"Organizations: {', '.join(clean_text(o) for o in org_names)}")
+                    desc = clean_text(str(node.get("description") or ""))
+                    if desc:
+                        profile_parts.append(desc)
+
+            meta_desc_tag = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "description"})
+            meta_desc = clean_text(meta_desc_tag.get("content") if meta_desc_tag else "")
+            if meta_desc and "largest business network" not in meta_desc.lower() and "world’s largest professional community" not in meta_desc.lower():
+                if meta_desc not in " ".join(profile_parts):
+                    profile_parts.append(meta_desc)
+            best_body = clean_text("\n".join(p for p in profile_parts if p))
+
+        if not best_body:
+            og_desc = soup.find("meta", property="og:description") or soup.find("meta", attrs={"name": "description"})
+            meta_text = clean_text(og_desc.get("content") if og_desc else "")
+            if meta_text and "largest business network" not in meta_text.lower():
+                best_body = meta_text
+
+        cleaned = clean_text(best_body)
+        if len(cleaned) < 25 or len(re.findall(r"[a-zA-Z]{2,}", cleaned)) < 4:
+            return None
+
+        lowered = cleaned.lower()
+        if any(
+            phrase in lowered
+            for phrase in ("sign in or join linkedin", "join linkedin to view", "sign in to view", "authwall")
+        ):
+            return None
+
+        wall = cls._detect_wall_reason(cleaned, cleaned, None, False, False, 2)
+        if wall:
+            return None
+
+        if resolved_title:
+            resolved_title = re.sub(r"\s*[|\-]\s*LinkedIn\s*$", "", resolved_title, flags=re.IGNORECASE).strip() or resolved_title
+            if "sign in" in resolved_title.lower() or "log in" in resolved_title.lower():
+                resolved_title = None
+
+        return cleaned, "SUCCESS", resolved_title, resolved_pub, None
+
     @classmethod
     def _parse_and_validate_html(
         cls,
         html: str,
         min_content_length: int,
+        url: str = "",
     ) -> Tuple[Optional[str], str, Optional[str], Optional[str], Optional[str]]:
         """Parses HTML with BeautifulSoup, validates article quality, and returns (text, status, title, publisher, reason)."""
         if not html or not html.strip():
@@ -249,6 +387,11 @@ class ArticleExtractor:
 
         soup = BeautifulSoup(html, "lxml")
         page_title, publisher = cls._extract_page_metadata(soup)
+
+        if url and cls._is_linkedin_url(url):
+            li_result = cls._extract_linkedin_public_html(soup, page_title, publisher, url)
+            if li_result is not None:
+                return li_result
 
         # Capture gate/CAPTCHA/login signals before decomposing <form>/<dialog> elements
         has_password_form = bool(soup.find("input", attrs={"type": re.compile(r"^password$", re.IGNORECASE)}))
@@ -346,6 +489,38 @@ class ArticleExtractor:
             logger.warning(f"Firecrawl scrape failed for {url} ({type(e).__name__}): {safe_err}")
         return None
 
+    @staticmethod
+    def extract_with_exa_contents(url: str) -> Optional[Tuple[str, Optional[str]]]:
+        """Fetches cached/rendered content for blocked social URLs using Exa /contents without exposing EXA_API_KEY."""
+        if not settings.EXA_API_KEY:
+            return None
+        try:
+            headers = {
+                "x-api-key": settings.EXA_API_KEY,
+                "Content-Type": "application/json",
+            }
+            with borrow_http_client(timeout_seconds=10.0, connect_timeout=4.0, follow_redirects=False) as client:
+                res = client.post(
+                    "https://api.exa.ai/contents",
+                    headers=headers,
+                    json={"ids": [url], "text": {"maxCharacters": 4000}},
+                )
+                if res.status_code == 200:
+                    results = res.json().get("results") or []
+                    if results and isinstance(results[0], dict):
+                        item = results[0]
+                        raw_text = item.get("text") or " ".join(item.get("highlights") or [])
+                        cleaned = clean_text(raw_text)
+                        if cleaned and len(cleaned) >= 25:
+                            title = clean_text(item.get("title") or "") or None
+                            return cleaned, title
+                else:
+                    logger.warning(f"Exa /contents returned HTTP {res.status_code} for {url}")
+        except Exception as e:
+            safe_err = _redact_api_key(str(e))
+            logger.warning(f"Exa /contents failed for {url} ({type(e).__name__}): {safe_err}")
+        return None
+
     @classmethod
     def _extract_with_httpx(
         cls,
@@ -360,9 +535,10 @@ class ArticleExtractor:
             ),
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
+        fetch_url = cls._normalize_fetch_url(url) if cls._is_linkedin_url(url) else url
         try:
             with borrow_http_client(timeout_seconds=7.0, connect_timeout=3.0, follow_redirects=True) as client:
-                resp = client.get(url, headers=headers)
+                resp = client.get(fetch_url, headers=headers)
                 if resp.status_code in (401, 403, 429):
                     logger.warning(f"HTTPX extraction restricted (HTTP {resp.status_code}) for URL: {url}")
                     return None, "RESTRICTED", None, None, f"http_{resp.status_code}"
@@ -376,7 +552,7 @@ class ArticleExtractor:
                     logger.info(f"HTTPX skipping non-HTML content-type ({ctype}) for URL: {url}")
                     return None, "FAILED", None, None, f"non_html:{ctype.split(';')[0]}"
 
-                return cls._parse_and_validate_html(resp.text, min_content_length=min_content_length)
+                return cls._parse_and_validate_html(resp.text, min_content_length=min_content_length, url=fetch_url)
         except httpx.HTTPError as e:
             logger.warning(f"HTTPX network error extracting {url} ({type(e).__name__}): {e}")
             return None, "RESTRICTED", None, None, f"network_error:{type(e).__name__}"
@@ -453,6 +629,22 @@ class ArticleExtractor:
 
         skip_reason = cls._firecrawl_skip_reason(url, httpx_status, reject_reason)
         if skip_reason:
+            if skip_reason == "gated_social_host" and cls._is_linkedin_url(url) and settings.EXA_API_KEY:
+                norm_url = cls._normalize_fetch_url(url)
+                exa_res = cls.extract_with_exa_contents(norm_url)
+                if not exa_res and norm_url != url:
+                    exa_res = cls.extract_with_exa_contents(url)
+                if exa_res:
+                    exa_text, exa_title = exa_res
+                    exa_wall = cls._detect_wall_reason(exa_text, exa_text, None, False, False, 2)
+                    if not exa_wall:
+                        safe_title = exa_title or (None if httpx_status == "RESTRICTED" else page_title)
+                        _last_extraction_method_var.set("exa_contents")
+                        logger.info(
+                            f"LinkedIn extraction succeeded via method=exa_contents for {url} ({len(exa_text)} chars)"
+                        )
+                        return exa_text, "SUCCESS", safe_title, publisher or "LinkedIn"
+
             logger.info(
                 f"Skipping Firecrawl fallback ({skip_reason}, reason={reject_reason}) for {url} (method=failure)"
             )

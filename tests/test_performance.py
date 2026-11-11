@@ -339,6 +339,7 @@ def test_execute_research_pipeline_end_to_end_with_concurrent_analysis(monkeypat
 
 def test_gated_social_and_binary_urls_skip_firecrawl_fallback(monkeypatch):
     monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
+    monkeypatch.setattr(settings, "EXA_API_KEY", None)
     post_called = False
 
     class _MockResponse:
@@ -454,5 +455,190 @@ def test_youtube_fast_watch_metadata_avoids_ytdlp(monkeypatch):
     desc = TranscriptExtractor._extract_video_metadata("https://www.youtube.com/watch?v=dQw4w9WgXcQ", skip_watch_html=False)
     assert desc is not None
     assert "AI infrastructure and enterprise cloud scaling" in desc
+
+
+def test_linkedin_post_public_html_extracts_without_api_fallback(monkeypatch):
+    monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
+    monkeypatch.setattr(settings, "EXA_API_KEY", "exa-test-key")
+
+    linkedin_post_html = """
+    <html>
+      <head>
+        <title>In 2008 we began CarDekho Group | Amit Jain | LinkedIn</title>
+        <script type="application/ld+json">
+          {
+            "@context": "http://schema.org",
+            "@type": "SocialMediaPosting",
+            "headline": "Building AI-driven mobility solutions at Auto Expo 2025",
+            "articleBody": "In 2008, we began CarDekho Group with a simple goal: make car buying easy and transparent."
+          }
+        </script>
+      </head>
+      <body>
+        <div class="sign-in-modal">
+          <p>Sign in to view more content</p>
+          <input type="password" name="session_password" />
+        </div>
+      </body>
+    </html>
+    """
+
+    class _PostResp:
+        status_code = 200
+        text = linkedin_post_html
+        headers = {"content-type": "text/html"}
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, headers=None, **kwargs):
+            return _PostResp()
+
+        def post(self, *args, **kwargs):
+            raise AssertionError("Paid fallback APIs must not run when public LinkedIn JSON-LD succeeds")
+
+    monkeypatch.setattr(httpx, "Client", _FakeClient)
+
+    content, status, title, publisher, method = ArticleExtractor.extract_article_with_method(
+        "https://www.linkedin.com/posts/cardekhoamitjain_autoexpo2025-activity-7287810557338959872-8bzy"
+    )
+    assert status == "SUCCESS"
+    assert method == "httpx"
+    assert publisher == "LinkedIn"
+    assert "CarDekho Group" in (content or "")
+    assert "transparent" in (content or "")
+    assert title is not None and "LinkedIn" not in title
+
+
+def test_linkedin_999_falls_back_to_exa_contents_not_firecrawl(monkeypatch):
+    monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
+    monkeypatch.setattr(settings, "EXA_API_KEY", "exa-test-key")
+    posted_urls = []
+
+    class _Resp:
+        def __init__(self, status_code, text="", json_data=None):
+            self.status_code = status_code
+            self.text = text
+            self._json = json_data
+            self.headers = {"content-type": "text/html"}
+
+        def json(self):
+            return self._json
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, headers=None, **kwargs):
+            return _Resp(999, text="Request denied")
+
+        def post(self, url, headers=None, json=None, **kwargs):
+            posted_urls.append(url)
+            if "api.firecrawl.dev" in url:
+                raise AssertionError("Firecrawl should NOT be called for blocked LinkedIn URLs")
+            return _Resp(
+                200,
+                json_data={
+                    "results": [
+                        {
+                            "title": "Auto Expo AI Mobility Launch | Amit Jain",
+                            "text": "Today at Auto Expo 2025 we unveiled our suite of AI-driven mobility solutions across India.",
+                        }
+                    ]
+                },
+            )
+
+    monkeypatch.setattr(httpx, "Client", _FakeClient)
+
+    content, status, title, publisher, method = ArticleExtractor.extract_article_with_method(
+        "https://linkedin.com/posts/amit-jain-sample_autoexpo-activity-12345"
+    )
+    assert status == "SUCCESS"
+    assert method == "exa_contents"
+    assert publisher == "LinkedIn"
+    assert "Auto Expo 2025" in (content or "")
+    assert title == "Auto Expo AI Mobility Launch | Amit Jain"
+    assert posted_urls == ["https://api.exa.ai/contents"]
+
+
+def test_refresh_failed_linkedin_sources_updates_in_place(monkeypatch):
+    from backend.workers.tasks import _refresh_failed_linkedin_sources
+    from backend.modules.analysis.summarizer import AppearanceSummarizer
+
+    db = TestingSessionLocal()
+    try:
+        person = Person(name="Amit Jain", profession="Co-Founder & CEO at CarDekho")
+        db.add(person)
+        db.flush()
+
+        app = Appearance(
+            person_id=person.id,
+            appearance_type="LINKEDIN_POST",
+            title="LinkedIn Publication",
+            publisher="LinkedIn",
+            identity_status="VERIFIED",
+            confidence_score=0.92,
+        )
+        db.add(app)
+        db.flush()
+
+        src = Source(
+            appearance_id=app.id,
+            source_url="https://www.linkedin.com/posts/amit-jain-sample-post",
+            canonical_url="https://www.linkedin.com/posts/amit-jain-sample-post",
+            source_type="LINKEDIN",
+            extraction_status="FAILED",
+            extracted_content=None,
+        )
+        db.add(src)
+        db.commit()
+
+        monkeypatch.setattr(
+            ArticleExtractor,
+            "extract_article",
+            classmethod(
+                lambda cls, url: (
+                    "Excited to share CarDekho's latest AI mobility initiatives.",
+                    "SUCCESS",
+                    "CarDekho AI Mobility Launch",
+                    "LinkedIn",
+                )
+            ),
+        )
+
+        ctx = IdentityContext(
+            person_id=person.id,
+            name="Amit Jain",
+            profession="Co-Founder & CEO at CarDekho",
+            organizations=["CarDekho"],
+            known_usernames=[],
+            profile_urls={},
+        )
+        refreshed = _refresh_failed_linkedin_sources(db, person.id, ctx, AppearanceSummarizer())
+        assert refreshed == 1
+
+        db.refresh(src)
+        db.refresh(app)
+        assert src.extraction_status == "SUCCESS"
+        assert "AI mobility" in (src.extracted_content or "")
+        assert app.title == "CarDekho AI Mobility Launch"
+        assert app.analysis is not None
+    finally:
+        db.close()
+
+
 
 
