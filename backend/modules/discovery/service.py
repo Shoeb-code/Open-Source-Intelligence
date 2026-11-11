@@ -1,4 +1,6 @@
-from typing import List, Dict
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List, Tuple
+from backend.config import settings
 from backend.modules.persons.schemas import IdentityContext
 from backend.modules.discovery.query_builder import QueryBuilder
 from backend.modules.collectors.youtube import YouTubeCollector, DiscoveredItem
@@ -11,7 +13,7 @@ from backend.utils.logger import logger
 
 
 class DiscoveryService:
-    """Orchestrates multi-source public appearance discovery across YouTube, News, Podcasts, Events, LinkedIn, and Instagram."""
+    """Orchestrates concurrent multi-source public appearance discovery across YouTube, News, Podcasts, Events, LinkedIn, and Instagram."""
 
     def __init__(self):
         self.youtube_collector = YouTubeCollector()
@@ -26,48 +28,33 @@ class DiscoveryService:
         queries_by_type = QueryBuilder.build_queries(context)
         discovered_items: List[DiscoveredItem] = []
 
-        # 1. YouTube discovery
-        if "youtube" in queries_by_type:
-            logger.info("Executing YouTube discovery...")
-            yt_items = self.youtube_collector.discover(queries_by_type["youtube"], max_per_query=3)
-            discovered_items.extend(yt_items)
-            logger.info(f"YouTube discovery found {len(yt_items)} candidate(s)")
+        tasks: List[Tuple[str, str, Callable[[List[str], int], List[DiscoveredItem]]]] = [
+            ("youtube", "YouTube", self.youtube_collector.discover),
+            ("news", "News", self.news_collector.discover),
+            ("podcasts", "Podcast", self.podcast_collector.discover),
+            ("events", "Events & Conferences", self.webpage_collector.discover),
+            ("linkedin", "LinkedIn", self.linkedin_collector.discover),
+            ("instagram", "Instagram", self.instagram_collector.discover),
+        ]
 
-        # 2. News discovery
-        if "news" in queries_by_type:
-            logger.info("Executing News discovery...")
-            news_items = self.news_collector.discover(queries_by_type["news"], max_per_query=3)
-            discovered_items.extend(news_items)
-            logger.info(f"News discovery found {len(news_items)} candidate(s)")
+        active_tasks = [(key, label, fn) for key, label, fn in tasks if key in queries_by_type]
+        if not active_tasks:
+            return discovered_items
 
-        # 3. Podcast discovery
-        if "podcasts" in queries_by_type:
-            logger.info("Executing Podcast discovery...")
-            pod_items = self.podcast_collector.discover(queries_by_type["podcasts"], max_per_query=3)
-            discovered_items.extend(pod_items)
-            logger.info(f"Podcast discovery found {len(pod_items)} candidate(s)")
-
-        # 4. Events discovery
-        if "events" in queries_by_type:
-            logger.info("Executing Events & Conferences discovery...")
-            event_items = self.webpage_collector.discover(queries_by_type["events"], max_per_query=3)
-            discovered_items.extend(event_items)
-            logger.info(f"Events discovery found {len(event_items)} candidate(s)")
-
-        # 5. LinkedIn discovery (Articles, Posts, Talks)
-        if "linkedin" in queries_by_type:
-            logger.info("Executing LinkedIn public posts & articles discovery...")
-            li_items = self.linkedin_collector.discover(queries_by_type["linkedin"], max_per_query=3)
-            discovered_items.extend(li_items)
-            logger.info(f"LinkedIn discovery found {len(li_items)} candidate(s)")
-
-        # 6. Instagram discovery (Posts, Reels, Media Appearances)
-        if "instagram" in queries_by_type:
-            logger.info("Executing Instagram public reels & posts discovery...")
-            insta_items = self.instagram_collector.discover(queries_by_type["instagram"], max_per_query=3)
-            discovered_items.extend(insta_items)
-            logger.info(f"Instagram discovery found {len(insta_items)} candidate(s)")
+        max_workers = max(1, min(len(active_tasks), settings.DISCOVERY_MAX_WORKERS))
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                key: (label, executor.submit(fn, queries_by_type[key], 3))
+                for key, label, fn in active_tasks
+            }
+            for key, label, _ in active_tasks:
+                _, fut = futures[key]
+                try:
+                    items = fut.result()
+                    discovered_items.extend(items)
+                    logger.info(f"{label} discovery found {len(items)} candidate(s)")
+                except Exception as e:
+                    logger.warning(f"{label} discovery failed: {e}")
 
         logger.info(f"Total candidate appearances discovered: {len(discovered_items)}")
         return discovered_items
-

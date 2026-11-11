@@ -2,11 +2,12 @@ import json
 import shutil
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel
-import httpx
 from backend.config import settings
+from backend.utils.http_pool import borrow_http_client
 from backend.utils.logger import logger
 from backend.utils.url_validator import extract_youtube_video_id, canonicalize_url
 
@@ -41,7 +42,7 @@ class YouTubeCollector:
             "maxResults": max_results
         }
         try:
-            with httpx.Client(timeout=10.0) as client:
+            with borrow_http_client(timeout_seconds=10.0, connect_timeout=4.0) as client:
                 res = client.get(url, params=params)
                 res.raise_for_status()
                 data = res.json()
@@ -110,22 +111,35 @@ class YouTubeCollector:
             logger.warning(f"yt-dlp discovery failed for '{query}': {e}")
         return items
 
+    def _discover_single_query(self, query: str, max_per_query: int) -> List[DiscoveredItem]:
+        results = []
+        if self.api_key:
+            results = self.search_via_api(query, max_results=max_per_query)
+        if not results:
+            results = self.search_via_ytdlp(query, max_results=max_per_query)
+        return results
+
     def discover(self, queries: List[str], max_per_query: int = 4) -> List[DiscoveredItem]:
         all_items: List[DiscoveredItem] = []
         seen_urls = set()
+        if not queries:
+            return all_items
 
-        for q in queries:
-            results = []
-            if self.api_key:
-                results = self.search_via_api(q, max_results=max_per_query)
-            if not results:
-                results = self.search_via_ytdlp(q, max_results=max_per_query)
-
-            for item in results:
-                canon = canonicalize_url(item.url)
-                if canon not in seen_urls:
-                    seen_urls.add(canon)
-                    all_items.append(item)
+        max_workers = max(
+            1,
+            min(
+                len(queries),
+                settings.QUERY_MAX_WORKERS if self.api_key else min(2, settings.QUERY_MAX_WORKERS),
+            ),
+        )
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [executor.submit(self._discover_single_query, q, max_per_query) for q in queries]
+            for fut in futures:
+                for item in fut.result():
+                    canon = canonicalize_url(item.url)
+                    if canon not in seen_urls:
+                        seen_urls.add(canon)
+                        all_items.append(item)
 
         return all_items
 

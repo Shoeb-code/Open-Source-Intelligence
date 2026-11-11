@@ -1,10 +1,11 @@
 import abc
+from concurrent.futures import ThreadPoolExecutor
 import urllib.parse
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from pydantic import BaseModel
-import httpx
 from bs4 import BeautifulSoup
 from backend.config import settings
+from backend.utils.http_pool import borrow_http_client
 from backend.utils.logger import logger
 from backend.utils.url_validator import canonicalize_url
 
@@ -23,6 +24,27 @@ class BaseSearchProvider(abc.ABC):
         """Executes a search query and returns normalized search results."""
         pass
 
+    def _batch_workers(self) -> int:
+        return min(2, settings.QUERY_MAX_WORKERS)
+
+    def search_batch(
+        self,
+        queries: List[str],
+        limit: int = 5,
+        source_type: str = "webpage",
+        max_workers: Optional[int] = None,
+    ) -> List[Tuple[str, List[SearchResult]]]:
+        """Runs multiple search queries concurrently while preserving input query order."""
+        if not queries:
+            return []
+        workers = max(1, min(len(queries), max_workers or self._batch_workers()))
+        if workers == 1:
+            return [(q, self.search(q, limit=limit, source_type=source_type)) for q in queries]
+
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(self.search, q, limit, source_type) for q in queries]
+            return [(q, fut.result()) for q, fut in zip(queries, futures)]
+
 
 class ExaSearchProvider(BaseSearchProvider):
     """Exa AI search provider for high-relevance web and media discovery."""
@@ -30,6 +52,9 @@ class ExaSearchProvider(BaseSearchProvider):
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or settings.EXA_API_KEY
         self.base_url = "https://api.exa.ai/search"
+
+    def _batch_workers(self) -> int:
+        return settings.QUERY_MAX_WORKERS if self.api_key else min(2, settings.QUERY_MAX_WORKERS)
 
     def search(self, query: str, limit: int = 5, source_type: str = "webpage") -> List[SearchResult]:
         if not self.api_key:
@@ -47,7 +72,7 @@ class ExaSearchProvider(BaseSearchProvider):
         }
 
         try:
-            with httpx.Client(timeout=15.0) as client:
+            with borrow_http_client(timeout_seconds=12.0, connect_timeout=4.0) as client:
                 resp = client.post(self.base_url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
@@ -82,7 +107,7 @@ class DuckDuckGoSearchProvider(BaseSearchProvider):
 
         # Strategy 1: lite.duckduckgo.com via POST (most resilient against anti-bot 202 challenges)
         try:
-            with httpx.Client(timeout=12.0, follow_redirects=True) as client:
+            with borrow_http_client(timeout_seconds=10.0, connect_timeout=4.0) as client:
                 resp = client.post(
                     "https://lite.duckduckgo.com/lite/",
                     data={"q": query},
@@ -121,7 +146,7 @@ class DuckDuckGoSearchProvider(BaseSearchProvider):
         # Strategy 2: html.duckduckgo.com fallback
         try:
             url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(query)}"
-            with httpx.Client(timeout=10.0, follow_redirects=True) as client:
+            with borrow_http_client(timeout_seconds=10.0, connect_timeout=4.0) as client:
                 resp = client.get(url, headers=headers)
                 if resp.status_code == 200:
                     soup = BeautifulSoup(resp.text, "html.parser")

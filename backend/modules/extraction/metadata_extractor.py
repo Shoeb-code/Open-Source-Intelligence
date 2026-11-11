@@ -26,7 +26,7 @@ class MetadataExtractor:
     """Dispatches content extraction based on source type and creates structured payload."""
 
     @staticmethod
-    def extract(item: DiscoveredItem) -> ExtractedPayload:
+    def extract(item: DiscoveredItem, allow_youtube_whisper: bool = True) -> ExtractedPayload:
         canonical_url = canonicalize_url(item.url)
         content: Optional[str] = None
         status = "PENDING"
@@ -37,7 +37,13 @@ class MetadataExtractor:
         source_type = (item.source_type or "WEBPAGE").upper()
 
         if source_type == "YOUTUBE":
-            content, status = TranscriptExtractor.extract_transcript(canonical_url)
+            if allow_youtube_whisper:
+                content, status = TranscriptExtractor.extract_transcript(canonical_url)
+            else:
+                try:
+                    content, status = TranscriptExtractor.extract_transcript(canonical_url, allow_whisper=False)
+                except TypeError:
+                    content, status = TranscriptExtractor.extract_transcript(canonical_url)
             if status in ("SUCCESS", "AI_TRANSCRIBED"):
                 extraction_method = "youtube_transcript"
             elif status == "METADATA_FALLBACK":

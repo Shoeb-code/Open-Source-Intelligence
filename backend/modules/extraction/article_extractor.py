@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import httpx
 from bs4 import BeautifulSoup
 from backend.config import settings
+from backend.utils.http_pool import borrow_http_client
 from backend.utils.logger import logger
 from backend.utils.text_cleaner import clean_text
 
@@ -326,7 +327,7 @@ class ArticleExtractor:
                 "Authorization": f"Bearer {settings.FIRECRAWL_API_KEY}",
                 "Content-Type": "application/json",
             }
-            with httpx.Client(timeout=20.0) as client:
+            with borrow_http_client(timeout_seconds=15.0, connect_timeout=5.0, follow_redirects=False) as client:
                 res = client.post(
                     "https://api.firecrawl.dev/v0/scrape",
                     headers=headers,
@@ -356,7 +357,7 @@ class ArticleExtractor:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
         try:
-            with httpx.Client(timeout=12.0, follow_redirects=True) as client:
+            with borrow_http_client(timeout_seconds=10.0, connect_timeout=4.0, follow_redirects=True) as client:
                 resp = client.get(url, headers=headers)
                 if resp.status_code in (401, 403, 429):
                     logger.warning(f"HTTPX extraction restricted (HTTP {resp.status_code}) for URL: {url}")
@@ -418,6 +419,13 @@ class ArticleExtractor:
             _last_extraction_method_var.set("httpx")
             logger.info(f"Article extraction succeeded via method=httpx for {url} ({len(httpx_text)} chars)")
             return httpx_text, "SUCCESS", page_title, publisher
+
+        if reject_reason in ("http_404", "http_410"):
+            logger.info(
+                f"HTTPX received non-existent page ({reject_reason}) for {url}; skipping Firecrawl fallback (method=failure)"
+            )
+            _last_extraction_method_var.set("failed")
+            return None, "FAILED", page_title, publisher
 
         # 2. Fall back to Firecrawl only when HTTPX failed, was restricted, or content quality was insufficient
         if settings.FIRECRAWL_API_KEY:

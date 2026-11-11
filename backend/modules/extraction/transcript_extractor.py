@@ -79,7 +79,7 @@ class TranscriptExtractor:
             video_url
         ])
         try:
-            res = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
             if res.returncode == 0 and res.stdout:
                 data = json.loads(res.stdout)
                 desc = data.get("description") or ""
@@ -98,7 +98,7 @@ class TranscriptExtractor:
         return None
 
     @classmethod
-    def extract_transcript(cls, video_url: str) -> Tuple[Optional[str], str]:
+    def extract_transcript(cls, video_url: str, allow_whisper: bool = True) -> Tuple[Optional[str], str]:
         """
         Returns (transcript_text, extraction_status).
         Statuses: SUCCESS, AI_TRANSCRIBED, METADATA_FALLBACK, or TRANSCRIPT_UNAVAILABLE.
@@ -147,9 +147,10 @@ class TranscriptExtractor:
             logger.info(f"YouTube native captions unavailable for {video_id}: {e}")
 
         # Tier 2: AI Speech-to-Text Transcription via Groq Whisper or OpenAI Whisper
-        whisper_text = cls._transcribe_with_whisper(video_url)
-        if whisper_text:
-            return whisper_text, "AI_TRANSCRIBED"
+        if allow_whisper:
+            whisper_text = cls._transcribe_with_whisper(video_url)
+            if whisper_text:
+                return whisper_text, "AI_TRANSCRIBED"
 
         # Tier 3: Zero-credential rich metadata & chapter extraction
         metadata_text = cls._extract_video_metadata(video_url)

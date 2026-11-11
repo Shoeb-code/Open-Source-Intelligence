@@ -14,8 +14,7 @@ class WebpageCollector:
         items: List[DiscoveredItem] = []
         seen_urls = set()
 
-        for q in queries:
-            results = self.search_provider.search(q, limit=max_per_query, source_type="EVENT")
+        for q, results in self.search_provider.search_batch(queries, limit=max_per_query, source_type="EVENT"):
             for r in results:
                 canon = canonicalize_url(r.url)
                 if canon not in seen_urls:
