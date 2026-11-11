@@ -1,7 +1,9 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections import defaultdict, deque
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 from sqlalchemy.orm import Session
 
 from backend.config import settings
@@ -19,7 +21,6 @@ from backend.modules.deduplication.deduplicator import DeduplicationGroup, Dedup
 from backend.modules.analysis.classifier import AppearanceClassifier
 from backend.modules.analysis.summarizer import AIAnalysisResult, AppearanceSummarizer
 from backend.workers.celery_app import celery_app
-from backend.utils.http_pool import DomainConcurrencyLimiter
 from backend.utils.logger import logger
 from backend.utils.url_validator import canonicalize_url, extract_youtube_video_id
 
@@ -79,35 +80,72 @@ def _extract_items_concurrently(
     job: Optional[ResearchJob] = None,
     db: Optional[Session] = None,
 ) -> List[ExtractedPayload]:
-    """Extracts URL payloads in parallel with per-domain concurrency bounds."""
+    """
+    Extracts URL payloads in parallel using a domain-aware non-blocking scheduler.
+    Prevents head-of-line stalling when one host (e.g. youtube.com or linkedin.com) has many queued URLs.
+    """
     if not items:
         return []
 
-    limiter = DomainConcurrencyLimiter(settings.PER_DOMAIN_MAX_CONCURRENCY)
-    workers = max(1, min(len(items), settings.EXTRACTION_MAX_WORKERS))
+    total = len(items)
+    workers = max(1, min(total, settings.EXTRACTION_MAX_WORKERS))
+    max_per_host = max(1, settings.PER_DOMAIN_MAX_CONCURRENCY)
     allow_whisper = settings.ENABLE_BULK_YOUTUBE_WHISPER
 
-    def _extract_one(idx: int, item: DiscoveredItem) -> Tuple[int, Optional[ExtractedPayload]]:
+    domain_queues: Dict[str, deque] = defaultdict(deque)
+    for idx, item in enumerate(items):
+        host = (urlparse(item.url).netloc or "default").lower()
+        domain_queues[host].append((idx, item))
+
+    active_per_host: Dict[str, int] = defaultdict(int)
+    in_flight: Dict[Future, Tuple[int, str]] = {}
+    ordered_results: Dict[int, Optional[ExtractedPayload]] = {}
+    completed = 0
+    progress_step = 2
+
+    def _extract_one(item: DiscoveredItem) -> Optional[ExtractedPayload]:
         try:
-            with limiter.acquire(item.url):
-                payload = MetadataExtractor.extract(item, allow_youtube_whisper=allow_whisper)
-            return idx, payload
+            return MetadataExtractor.extract(item, allow_youtube_whisper=allow_whisper)
         except Exception as e:
             logger.warning(f"Failed extraction for {item.url}: {e}")
-            return idx, None
+            return None
 
-    ordered_results: Dict[int, Optional[ExtractedPayload]] = {}
-    total = len(items)
-    step = max(1, total // 5)
-    completed = 0
+    def _pop_next_eligible() -> Optional[Tuple[int, str, DiscoveredItem]]:
+        # Pick the eligible host with the largest remaining backlog so busy hosts start immediately
+        # while free worker slots never block waiting on saturated hosts.
+        best_host: Optional[str] = None
+        best_len = 0
+        for host, q in domain_queues.items():
+            if q and active_per_host[host] < max_per_host and len(q) > best_len:
+                best_host = host
+                best_len = len(q)
+        if best_host is None:
+            return None
+        idx, item = domain_queues[best_host].popleft()
+        return idx, best_host, item
 
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(_extract_one, idx, item) for idx, item in enumerate(items)]
-        for fut in as_completed(futures):
-            idx, payload = fut.result()
-            ordered_results[idx] = payload
-            completed += 1
-            if job is not None and db is not None and (completed % step == 0 or completed == total):
+        while in_flight or any(domain_queues.values()):
+            while len(in_flight) < workers:
+                next_task = _pop_next_eligible()
+                if next_task is None:
+                    break
+                idx, host, item = next_task
+                active_per_host[host] += 1
+                fut = executor.submit(_extract_one, item)
+                in_flight[fut] = (idx, host)
+
+            if not in_flight:
+                break
+
+            done, _ = wait(in_flight.keys(), return_when=FIRST_COMPLETED)
+            for fut in done:
+                idx, host = in_flight.pop(fut)
+                active_per_host[host] -= 1
+                ordered_results[idx] = fut.result()
+                completed += 1
+
+            if job is not None and db is not None and (completed % progress_step == 0 or completed == total):
                 job.progress = 35 + int(25 * completed / total)
                 db.commit()
 

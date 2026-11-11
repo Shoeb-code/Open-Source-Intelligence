@@ -36,9 +36,9 @@ class Settings(BaseSettings):
     # Discovery & Extraction Concurrency Controls
     DISCOVERY_MAX_WORKERS: int = 6
     QUERY_MAX_WORKERS: int = 4
-    EXTRACTION_MAX_WORKERS: int = 8
+    EXTRACTION_MAX_WORKERS: int = 10
     ANALYSIS_MAX_WORKERS: int = 5
-    PER_DOMAIN_MAX_CONCURRENCY: int = 2
+    PER_DOMAIN_MAX_CONCURRENCY: int = 3
     ENABLE_BULK_YOUTUBE_WHISPER: bool = False
 
     # Optional Bearer/API token for authenticated sensitive endpoints (e.g. LinkedIn enrichment)

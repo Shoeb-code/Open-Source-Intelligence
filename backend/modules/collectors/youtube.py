@@ -129,7 +129,7 @@ class YouTubeCollector:
             1,
             min(
                 len(queries),
-                settings.QUERY_MAX_WORKERS if self.api_key else min(2, settings.QUERY_MAX_WORKERS),
+                settings.QUERY_MAX_WORKERS if self.api_key else min(3, settings.QUERY_MAX_WORKERS),
             ),
         )
         with ThreadPoolExecutor(max_workers=max_workers) as executor:

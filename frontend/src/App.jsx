@@ -14,7 +14,9 @@ import {
   Link2,
   Sparkles,
   Menu,
-  UserCheck
+  UserCheck,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { api } from './api';
 
@@ -44,7 +46,9 @@ export default function App() {
 
   // Per-target Active Research State: { [personId]: { jobId, status } }
   const [activeJobsByPerson, setActiveJobsByPerson] = useState({});
+  const [jobErrorsByPerson, setJobErrorsByPerson] = useState({});
   const currentResearch = selectedPersonId ? activeJobsByPerson[selectedPersonId] || null : null;
+  const selectedJobError = selectedPersonId ? jobErrorsByPerson[selectedPersonId] || null : null;
   const isSelectedResearching = Boolean(currentResearch);
   const selectedJobStatus = currentResearch?.status || null;
   const researchingPersonIds = Object.keys(activeJobsByPerson);
@@ -155,6 +159,12 @@ export default function App() {
     const targetPersonId = selectedPersonId;
     if (!targetPersonId || activeJobsByPerson[targetPersonId]) return;
     try {
+      setJobErrorsByPerson((prev) => {
+        if (!prev[targetPersonId]) return prev;
+        const next = { ...prev };
+        delete next[targetPersonId];
+        return next;
+      });
       setActiveJobsByPerson((prev) => ({
         ...prev,
         [targetPersonId]: { jobId: null, status: { status: 'STARTING', progress: 5 } },
@@ -190,6 +200,12 @@ export default function App() {
                 delete next[personId];
                 return next;
               });
+              if (status.status === 'FAILED') {
+                setJobErrorsByPerson((prev) => ({
+                  ...prev,
+                  [personId]: status.error_message || 'Search pipeline failed before completing.',
+                }));
+              }
               if (selectedPersonIdRef.current === personId) {
                 fetchPersonIntelligence(personId);
               }
@@ -463,6 +479,29 @@ export default function App() {
                       style={{ width: `${selectedJobStatus?.progress || 15}%` }}
                     />
                   </div>
+                </div>
+              )}
+
+              {selectedJobError && !isSelectedResearching && (
+                <div className="px-4 sm:px-6 py-3 bg-rose-50 border-b border-rose-200 flex items-center justify-between gap-3 text-xs text-rose-800">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle size={15} className="shrink-0 text-rose-600" />
+                    <span>Search job failed: {selectedJobError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setJobErrorsByPerson((prev) => {
+                        const next = { ...prev };
+                        delete next[selectedPerson.id];
+                        return next;
+                      })
+                    }
+                    className="p-1 rounded text-rose-500 hover:text-rose-800 hover:bg-rose-100"
+                    aria-label="Dismiss search error"
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               )}
 

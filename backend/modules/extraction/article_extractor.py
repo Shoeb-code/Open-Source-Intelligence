@@ -1,6 +1,7 @@
 import re
 from contextvars import ContextVar
 from typing import Optional, Tuple
+from urllib.parse import urlparse
 import httpx
 from bs4 import BeautifulSoup
 from backend.config import settings
@@ -97,6 +98,9 @@ _CAPTCHA_HTML_PATTERN = re.compile(
     r"/cdn-cgi/challenge-platform|captcha-delivery|px-captcha",
     re.IGNORECASE,
 )
+
+
+_GATED_SOCIAL_HOSTS = ("linkedin.com", "instagram.com", "facebook.com")
 
 
 def _redact_api_key(text: str) -> str:
@@ -327,7 +331,7 @@ class ArticleExtractor:
                 "Authorization": f"Bearer {settings.FIRECRAWL_API_KEY}",
                 "Content-Type": "application/json",
             }
-            with borrow_http_client(timeout_seconds=15.0, connect_timeout=5.0, follow_redirects=False) as client:
+            with borrow_http_client(timeout_seconds=10.0, connect_timeout=4.0, follow_redirects=False) as client:
                 res = client.post(
                     "https://api.firecrawl.dev/v0/scrape",
                     headers=headers,
@@ -357,7 +361,7 @@ class ArticleExtractor:
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         }
         try:
-            with borrow_http_client(timeout_seconds=10.0, connect_timeout=4.0, follow_redirects=True) as client:
+            with borrow_http_client(timeout_seconds=7.0, connect_timeout=3.0, follow_redirects=True) as client:
                 resp = client.get(url, headers=headers)
                 if resp.status_code in (401, 403, 429):
                     logger.warning(f"HTTPX extraction restricted (HTTP {resp.status_code}) for URL: {url}")
@@ -365,6 +369,12 @@ class ArticleExtractor:
                 if resp.status_code != 200:
                     logger.warning(f"HTTPX returned HTTP {resp.status_code} for URL: {url}")
                     return None, "FAILED", None, None, f"http_{resp.status_code}"
+
+                headers_map = getattr(resp, "headers", None) or {}
+                ctype = str(headers_map.get("content-type", "")).lower()
+                if ctype and "html" not in ctype and "text/" not in ctype and "xml" not in ctype:
+                    logger.info(f"HTTPX skipping non-HTML content-type ({ctype}) for URL: {url}")
+                    return None, "FAILED", None, None, f"non_html:{ctype.split(';')[0]}"
 
                 return cls._parse_and_validate_html(resp.text, min_content_length=min_content_length)
         except httpx.HTTPError as e:
@@ -397,6 +407,27 @@ class ArticleExtractor:
         method = _last_extraction_method_var.get() or ("failed" if status != "SUCCESS" else "httpx")
         return text, status, page_title, publisher, method
 
+    @staticmethod
+    def _firecrawl_skip_reason(url: str, httpx_status: str, reject_reason: Optional[str]) -> Optional[str]:
+        """Returns a skip label when Firecrawl fallback is guaranteed to fail or waste quota."""
+        if reject_reason in ("http_404", "http_410"):
+            return "non_existent_page"
+        if reject_reason and reject_reason.startswith("non_html:") and any(
+            mime in reject_reason for mime in ("image/", "video/", "audio/", "application/octet-stream", "application/zip")
+        ):
+            return "binary_non_html"
+
+        host = (urlparse(url).netloc or "").lower()
+        if any(host == d or host.endswith(f".{d}") for d in _GATED_SOCIAL_HOSTS):
+            reason = reject_reason or ""
+            if (
+                httpx_status == "RESTRICTED"
+                or reason.startswith(("http_401", "http_403", "http_429", "http_999", "insufficient_words", "text_too_short", "navigation_heavy"))
+                or reason in ("blocked_title", "login_form", "bot_or_login_wall", "restricted_gate_text")
+            ):
+                return "gated_social_host"
+        return None
+
     @classmethod
     def extract_article(
         cls,
@@ -420,12 +451,15 @@ class ArticleExtractor:
             logger.info(f"Article extraction succeeded via method=httpx for {url} ({len(httpx_text)} chars)")
             return httpx_text, "SUCCESS", page_title, publisher
 
-        if reject_reason in ("http_404", "http_410"):
+        skip_reason = cls._firecrawl_skip_reason(url, httpx_status, reject_reason)
+        if skip_reason:
             logger.info(
-                f"HTTPX received non-existent page ({reject_reason}) for {url}; skipping Firecrawl fallback (method=failure)"
+                f"Skipping Firecrawl fallback ({skip_reason}, reason={reject_reason}) for {url} (method=failure)"
             )
             _last_extraction_method_var.set("failed")
-            return None, "FAILED", page_title, publisher
+            final_status = "RESTRICTED" if (httpx_status == "RESTRICTED" or reject_reason == "http_999") else "FAILED"
+            safe_title = None if final_status == "RESTRICTED" else page_title
+            return None, final_status, safe_title, publisher
 
         # 2. Fall back to Firecrawl only when HTTPX failed, was restricted, or content quality was insufficient
         if settings.FIRECRAWL_API_KEY:

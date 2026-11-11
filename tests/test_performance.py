@@ -125,6 +125,53 @@ def test_concurrent_extraction_preserves_order_and_respects_domain_limit(monkeyp
     assert elapsed < 0.28
 
 
+def test_domain_aware_scheduler_prevents_head_of_line_blocking(monkeypatch):
+    monkeypatch.setattr(settings, "EXTRACTION_MAX_WORKERS", 6)
+    monkeypatch.setattr(settings, "PER_DOMAIN_MAX_CONCURRENCY", 2)
+
+    completion_order = []
+    lock = threading.Lock()
+
+    def _fake_extract(item: DiscoveredItem, allow_youtube_whisper: bool = True):
+        delay = 0.14 if "slow.example" in item.url else 0.02
+        time.sleep(delay)
+        with lock:
+            completion_order.append(item.title)
+        return ExtractedPayload(
+            title=item.title,
+            source_url=item.url,
+            canonical_url=item.url,
+            source_type=item.source_type,
+            extracted_content=item.title,
+            content_hash=item.title,
+            extraction_status="SUCCESS",
+            extraction_method="httpx",
+        )
+
+    monkeypatch.setattr(MetadataExtractor, "extract", staticmethod(_fake_extract))
+
+    # 6 slow URLs placed first (previously starved all 6 threads on semaphore); 4 fast distinct domains after
+    items = [
+        *[
+            DiscoveredItem(title=f"Slow-{i}", url=f"https://slow.example/{i}", source_type="YOUTUBE")
+            for i in range(6)
+        ],
+        *[
+            DiscoveredItem(title=f"Fast-{i}", url=f"https://fast{i}.example/article", source_type="NEWS")
+            for i in range(4)
+        ],
+    ]
+
+    t0 = time.perf_counter()
+    payloads = _extract_items_concurrently(items)
+    elapsed = time.perf_counter() - t0
+
+    assert len(payloads) == 10
+    # Fast domains must finish BEFORE the 3rd wave of slow.example completes
+    assert all(f"Fast-{i}" in completion_order[:6] for i in range(4))
+    assert elapsed < 0.55
+
+
 def test_404_skips_firecrawl_fallback(monkeypatch):
     monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
     post_called = False
@@ -216,4 +263,196 @@ def test_concurrent_discovery_service_aggregates_all_collectors(monkeypatch):
     assert len(results) == 6
     # 6 collectors * 0.05s sequentially = 0.30s; concurrent runs around ~0.05-0.12s
     assert elapsed < 0.22
+
+
+def test_execute_research_pipeline_end_to_end_with_concurrent_analysis(monkeypatch):
+    from backend.database.models import ResearchJob
+    from backend.workers import tasks as worker_tasks
+
+    db = TestingSessionLocal()
+    try:
+        person = Person(name="Jane Innovator", profession="CTO at QuantumGrid")
+        db.add(person)
+        db.flush()
+        job = ResearchJob(person_id=person.id, status="PENDING", progress=0)
+        db.add(job)
+        db.commit()
+        person_id = person.id
+        job_id = job.id
+    finally:
+        db.close()
+
+    monkeypatch.setattr(worker_tasks, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(
+        DiscoveryService,
+        "run_discovery",
+        lambda self, ctx: [
+            DiscoveredItem(
+                title="Jane Innovator on QuantumGrid Architecture",
+                url="https://example.org/news/jane-quantumgrid",
+                description="Jane Innovator discusses QuantumGrid at annual summit.",
+                source_type="NEWS",
+            ),
+            DiscoveredItem(
+                title="Jane Innovator LinkedIn Profile",
+                url="https://www.linkedin.com/in/jane-innovator",
+                description="Jane Innovator CTO at QuantumGrid",
+                source_type="LINKEDIN",
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        MetadataExtractor,
+        "extract",
+        staticmethod(
+            lambda item, allow_youtube_whisper=True: ExtractedPayload(
+                title=item.title,
+                source_url=item.url,
+                canonical_url=item.url,
+                source_type=item.source_type,
+                publisher="Tech Summit",
+                description=item.description,
+                extracted_content=f"{item.title}. {item.description} Extensive commentary from Jane Innovator at QuantumGrid.",
+                content_hash=item.url,
+                extraction_status="SUCCESS",
+                extraction_method="httpx",
+            )
+        ),
+    )
+
+    worker_tasks.execute_research_pipeline(job_id)
+
+    verify_db = TestingSessionLocal()
+    try:
+        finished_job = verify_db.query(ResearchJob).filter(ResearchJob.id == job_id).first()
+        assert finished_job is not None
+        assert finished_job.status == "COMPLETED"
+        assert finished_job.progress == 100
+        assert finished_job.error_message is None
+
+        stored_apps = verify_db.query(Appearance).filter(Appearance.person_id == person_id).all()
+        assert len(stored_apps) == 2
+        assert all(a.analysis is not None for a in stored_apps)
+    finally:
+        verify_db.close()
+
+
+def test_gated_social_and_binary_urls_skip_firecrawl_fallback(monkeypatch):
+    monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-key")
+    post_called = False
+
+    class _MockResponse:
+        def __init__(self, status_code, text="", content_type="text/html"):
+            self.status_code = status_code
+            self.text = text
+            self.headers = {"content-type": content_type}
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, headers=None, **kwargs):
+            if url.endswith(".png"):
+                return _MockResponse(200, text="binary", content_type="image/png")
+            return _MockResponse(999, text="Request denied")
+
+        def post(self, *args, **kwargs):
+            nonlocal post_called
+            post_called = True
+            raise AssertionError("Firecrawl should NOT be called for gated social or binary URLs")
+
+    monkeypatch.setattr(httpx, "Client", _FakeClient)
+
+    content, status, _, _, method = ArticleExtractor.extract_article_with_method(
+        "https://www.linkedin.com/in/example-founder"
+    )
+    assert content is None
+    assert status == "RESTRICTED"
+    assert method == "failed"
+
+    content_img, status_img, _, _, method_img = ArticleExtractor.extract_article_with_method(
+        "https://example.org/banner.png"
+    )
+    assert content_img is None
+    assert status_img == "FAILED"
+    assert method_img == "failed"
+    assert post_called is False
+
+
+def test_youtube_ip_block_skips_list_retry_and_uses_cooldown(monkeypatch):
+    from youtube_transcript_api._errors import IpBlocked
+    import backend.modules.extraction.transcript_extractor as te_mod
+
+    TranscriptExtractor.clear_transcript_cooldown()
+    calls = {"fetch": 0, "list": 0, "meta_skip_flags": []}
+
+    class _FakeYTApi:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fetch(self, video_id, languages=None):
+            calls["fetch"] += 1
+            raise IpBlocked(video_id)
+
+        def list(self, video_id):
+            calls["list"] += 1
+            raise AssertionError("list() should not be called on IpBlocked")
+
+    def _fake_meta(video_url, skip_watch_html=False):
+        calls["meta_skip_flags"].append(skip_watch_html)
+        return "Rich fallback metadata from yt-dlp"
+
+    monkeypatch.setattr(te_mod, "YouTubeTranscriptApi", _FakeYTApi)
+    monkeypatch.setattr(TranscriptExtractor, "_extract_video_metadata", staticmethod(_fake_meta))
+
+    try:
+        t1, s1 = TranscriptExtractor.extract_transcript("https://www.youtube.com/watch?v=vidOne11111", allow_whisper=False)
+        t2, s2 = TranscriptExtractor.extract_transcript("https://www.youtube.com/watch?v=vidTwo22222", allow_whisper=False)
+
+        assert s1 == "METADATA_FALLBACK" and "Rich fallback" in (t1 or "")
+        assert s2 == "METADATA_FALLBACK" and "Rich fallback" in (t2 or "")
+        assert calls["fetch"] == 1
+        assert calls["list"] == 0
+        assert calls["meta_skip_flags"] == [True, True]
+    finally:
+        TranscriptExtractor.clear_transcript_cooldown()
+
+
+def test_youtube_fast_watch_metadata_avoids_ytdlp(monkeypatch):
+    import backend.modules.extraction.transcript_extractor as te_mod
+
+    class _WatchResp:
+        status_code = 200
+        text = '<html><script>var ytInitialPlayerResponse = {"videoDetails":{"shortDescription":"Full talk keynote on AI infrastructure and enterprise cloud scaling."}};</script></html>'
+
+    class _WatchClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, url, headers=None, **kwargs):
+            return _WatchResp()
+
+    monkeypatch.setattr("backend.utils.http_pool.httpx.Client", _WatchClient)
+    monkeypatch.setattr(
+        te_mod.subprocess,
+        "run",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("subprocess yt-dlp should not run when watch HTML succeeds")),
+    )
+
+    desc = TranscriptExtractor._extract_video_metadata("https://www.youtube.com/watch?v=dQw4w9WgXcQ", skip_watch_html=False)
+    assert desc is not None
+    assert "AI infrastructure and enterprise cloud scaling" in desc
+
 
