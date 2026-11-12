@@ -3,9 +3,11 @@ import hashlib
 from typing import Optional
 
 def clean_text(text: Optional[str]) -> str:
-    """Removes excessive whitespace, special control characters, and normalizes text."""
+    """Removes excessive whitespace, zero-width noise, and control characters, and normalizes text."""
     if not text:
         return ""
+    # Remove zero-width / soft-hyphen / BOM artifacts
+    text = re.sub(r'[\u200b-\u200d\ufeff\u00ad]+', '', text)
     # Normalize unicode spaces & line breaks
     text = re.sub(r'[\r\t\f\v]+', ' ', text)
     # Condense consecutive newlines and spaces

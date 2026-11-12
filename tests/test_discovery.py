@@ -48,3 +48,61 @@ def test_collectors_item_detection_and_username_extraction():
     assert LinkedInCollector._extract_username("https://linkedin.com/in/madhu-lunawat-1a3b719") == "madhu-lunawat-1a3b719"
     assert LinkedInCollector._clean_title("Madhu Lunawat - Founder - The Wealth Company | LinkedIn", "https://linkedin.com/in/madhu-lunawat-1a3b719") == "Madhu Lunawat - Founder - The Wealth Company"
 
+
+def test_discovery_service_dedups_across_collectors_and_linkedin_subdomains(monkeypatch):
+    from backend.modules.collectors.youtube import DiscoveredItem
+    from backend.modules.discovery.service import DiscoveryService
+
+    svc = DiscoveryService()
+    monkeypatch.setattr(
+        svc.youtube_collector,
+        "discover",
+        lambda q, max_per_query=3: [
+            DiscoveredItem(title="YT Primary", url="https://www.youtube.com/watch?v=vid12345678", source_type="YOUTUBE")
+        ],
+    )
+    monkeypatch.setattr(
+        svc.podcast_collector,
+        "discover",
+        lambda q, max_per_query=3: [
+            DiscoveredItem(
+                title="YT As Podcast",
+                url="https://youtu.be/vid12345678",
+                description="Full podcast description snippet",
+                source_type="PODCAST",
+            )
+        ],
+    )
+    monkeypatch.setattr(
+        svc.linkedin_collector,
+        "discover",
+        lambda q, max_per_query=3: [
+            DiscoveredItem(title="LI WWW", url="https://www.linkedin.com/in/janedoe", source_type="LINKEDIN"),
+        ],
+    )
+    monkeypatch.setattr(
+        svc.news_collector,
+        "discover",
+        lambda q, max_per_query=3: [
+            DiscoveredItem(title="LI IN Subdomain", url="https://in.linkedin.com/in/janedoe", source_type="NEWS"),
+            DiscoveredItem(title="News Story", url="https://example.org/news/1", source_type="NEWS"),
+        ],
+    )
+    monkeypatch.setattr(svc.webpage_collector, "discover", lambda q, max_per_query=3: [])
+    monkeypatch.setattr(svc.instagram_collector, "discover", lambda q, max_per_query=3: [])
+
+    ctx = IdentityContext(
+        person_id="p-dedup",
+        name="Jane Doe",
+        profession="Founder",
+        organizations=[],
+        known_usernames=[],
+        profile_urls={},
+    )
+    items = svc.run_discovery(ctx)
+    assert len(items) == 3
+    yt_items = [i for i in items if i.source_type == "YOUTUBE"]
+    assert len(yt_items) == 1
+    assert yt_items[0].description == "Full podcast description snippet"
+    li_items = [i for i in items if "linkedin.com" in i.url]
+    assert len(li_items) == 1

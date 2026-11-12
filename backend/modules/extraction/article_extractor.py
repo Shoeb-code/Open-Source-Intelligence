@@ -57,6 +57,11 @@ _STRONG_BLOCK_PHRASES = (
     "subscribe to continue reading",
     "enable javascript to run this app",
     "this content isn't available right now",
+    "error 401 (bad request)",
+    "safeline waf",
+    "dynamic decrypting",
+    "about press copyright contact us",
+    "to play explicit episodes, sign in",
 )
 
 _BLOCK_TITLE_KEYWORDS = (
@@ -159,6 +164,10 @@ class _FirecrawlScrapeResult:
     api_status_code: Optional[int] = None
     error_reason: Optional[str] = None
     is_restricted: bool = False
+    duration_ms: float = 0.0
+    semaphore_wait_ms: float = 0.0
+    retry_count: int = 0
+    credits_used: Optional[int] = None
 
 
 class ArticleExtractor:
@@ -412,8 +421,14 @@ class ArticleExtractor:
             if len(re.sub(r"[#>*`\[\]()_-]+", "", p).strip()) >= 40
         ]
         substantive_p_count = len(paragraphs)
-        link_labels = re.findall(r"\[([^\]]+)\]\([^)]+\)", cleaned)
-        link_ratio = sum(len(lbl) for lbl in link_labels) / max(len(cleaned), 1)
+
+        # Strip Markdown image/link URLs before measuring prose length and link density
+        prose_text = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", cleaned)
+        prose_text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", prose_text)
+        prose_text = clean_text(re.sub(r"https?://\S+", " ", prose_text))
+
+        link_markup_chars = sum(len(m.group(0)) for m in re.finditer(r"!?\[[^\]]*\]\([^)]+\)", cleaned))
+        link_ratio = link_markup_chars / max(len(cleaned), 1)
         has_captcha = bool(_CAPTCHA_MARKERS.search(cleaned))
         has_password_prompt = any(
             tok in cleaned.lower()[:1200]
@@ -439,17 +454,17 @@ class ArticleExtractor:
             if target_status_code in (401, 403, 429, 999):
                 return None, False, f"target_http_{target_status_code}", True
 
-            if len(cleaned) < _LINKEDIN_MIN_CONTENT_LENGTH:
-                return None, False, f"too_short ({len(cleaned)} < {_LINKEDIN_MIN_CONTENT_LENGTH} chars)", False
+            if len(prose_text) < _LINKEDIN_MIN_CONTENT_LENGTH:
+                return None, False, f"too_short ({len(prose_text)} < {_LINKEDIN_MIN_CONTENT_LENGTH} chars)", False
 
-            alpha_words = re.findall(r"[A-Za-z]{2,}", cleaned)
+            alpha_words = re.findall(r"[A-Za-z]{2,}", prose_text)
             if len(alpha_words) < _LINKEDIN_MIN_ALPHA_WORDS:
                 return None, False, f"insufficient_words ({len(alpha_words)} < {_LINKEDIN_MIN_ALPHA_WORDS})", False
 
             return cleaned, True, None, False
 
         is_valid, reason = cls._assess_content_quality(
-            cleaned_text=cleaned,
+            cleaned_text=prose_text,
             min_content_length=min_content_length,
             page_title=page_title,
             raw_gate_text=cleaned[:1500],
@@ -504,10 +519,15 @@ class ArticleExtractor:
         last_error: Optional[str] = None
         last_status: Optional[int] = None
         last_restricted = False
+        total_sem_wait_ms = 0.0
+        retries_used = 0
+        t_start = time.perf_counter()
 
         for attempt in range(max_retries + 1):
             retry_delay: Optional[float] = None
+            wait_t0 = time.perf_counter()
             sem.acquire()
+            total_sem_wait_ms += (time.perf_counter() - wait_t0) * 1000.0
             try:
                 with borrow_http_client(
                     timeout_seconds=timeout_s,
@@ -525,6 +545,9 @@ class ArticleExtractor:
                             success=False,
                             api_status_code=200,
                             error_reason="Invalid JSON response from Firecrawl v2",
+                            duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                            semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                            retry_count=retries_used,
                         )
 
                     if not isinstance(body, dict):
@@ -532,6 +555,9 @@ class ArticleExtractor:
                             success=False,
                             api_status_code=200,
                             error_reason="Malformed response payload from Firecrawl v2",
+                            duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                            semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                            retry_count=retries_used,
                         )
 
                     if body.get("success") is False:
@@ -540,6 +566,9 @@ class ArticleExtractor:
                             success=False,
                             api_status_code=200,
                             error_reason=err_msg,
+                            duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                            semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                            retry_count=retries_used,
                         )
 
                     data = body.get("data") if isinstance(body.get("data"), dict) else body
@@ -561,6 +590,8 @@ class ArticleExtractor:
                     source_url = str(meta.get("sourceURL") or meta.get("source_url") or meta.get("url") or url)
                     raw_target_status = meta.get("statusCode")
                     target_status = raw_target_status if isinstance(raw_target_status, int) else None
+                    raw_credits = body.get("creditsUsed") if isinstance(body.get("creditsUsed"), int) else meta.get("creditsUsed")
+                    credits_used = raw_credits if isinstance(raw_credits, int) else None
 
                     markdown = data.get("markdown") or data.get("content")
                     if not markdown and meta.get("jsonLd"):
@@ -577,6 +608,10 @@ class ArticleExtractor:
                         source_url=source_url,
                         target_status_code=target_status,
                         api_status_code=200,
+                        duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                        semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                        retry_count=retries_used,
+                        credits_used=credits_used,
                     )
 
                 if res.status_code == 402:
@@ -584,9 +619,13 @@ class ArticleExtractor:
                         success=False,
                         api_status_code=402,
                         error_reason="HTTP 402 - Credits unavailable",
+                        duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                        semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                        retry_count=retries_used,
                     )
 
                 if res.status_code in _RETRYABLE_STATUS_CODES and attempt < max_retries:
+                    retries_used += 1
                     retry_after = cls._extract_retry_after_seconds(getattr(res, "headers", None))
                     retry_delay = retry_after if retry_after is not None else min(0.4 * (2 ** attempt), 2.0)
                     last_error = f"HTTP {res.status_code}"
@@ -601,10 +640,14 @@ class ArticleExtractor:
                         api_status_code=res.status_code,
                         error_reason=last_error,
                         is_restricted=last_restricted,
+                        duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                        semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                        retry_count=retries_used,
                     )
             except httpx.TimeoutException as e:
                 last_error = _redact_api_key(f"TimeoutException: {e}")
                 if attempt == 0:
+                    retries_used += 1
                     retry_delay = 0.25
                     logger.warning(
                         f"[EXTRACTION] URL: {url} | [PROVIDER] Firecrawl v2 | Retry 1/1 after API timeout"
@@ -614,16 +657,23 @@ class ArticleExtractor:
                         success=False,
                         api_status_code=last_status,
                         error_reason=last_error,
+                        duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                        semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                        retry_count=retries_used,
                     )
             except httpx.HTTPError as e:
                 last_error = _redact_api_key(f"{type(e).__name__}: {e}")
                 if attempt == 0 and isinstance(e, httpx.TransportError) and not isinstance(e, httpx.ConnectError):
+                    retries_used += 1
                     retry_delay = 0.25
                 else:
                     return _FirecrawlScrapeResult(
                         success=False,
                         api_status_code=last_status,
                         error_reason=last_error,
+                        duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                        semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                        retry_count=retries_used,
                     )
             except Exception as e:
                 last_error = _redact_api_key(f"{type(e).__name__}: {e}")
@@ -631,6 +681,9 @@ class ArticleExtractor:
                     success=False,
                     api_status_code=last_status,
                     error_reason=last_error,
+                    duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+                    semaphore_wait_ms=round(total_sem_wait_ms, 2),
+                    retry_count=retries_used,
                 )
             finally:
                 sem.release()
@@ -643,6 +696,9 @@ class ArticleExtractor:
             api_status_code=last_status,
             error_reason=last_error or "Firecrawl scrape retries exhausted",
             is_restricted=last_restricted,
+            duration_ms=round((time.perf_counter() - t_start) * 1000.0, 2),
+            semaphore_wait_ms=round(total_sem_wait_ms, 2),
+            retry_count=retries_used,
         )
 
     @classmethod
@@ -707,12 +763,18 @@ class ArticleExtractor:
         failure_reason: Optional[str] = None,
         error_details: Optional[str] = None,
         exa_fallback_note: Optional[str] = None,
+        duration_ms: float = 0.0,
+        semaphore_wait_ms: float = 0.0,
+        retry_count: int = 0,
+        fallback_provider: Optional[str] = None,
+        credits_used: Optional[int] = None,
     ) -> None:
         quality = cls._classify_quality(content_length) if status == "SUCCESS" else "NONE"
         details = {
             "source_url": url,
             "method": method,
             "provider": provider,
+            "fallback_provider": fallback_provider,
             "status": status,
             "api_status_code": api_status_code,
             "target_status_code": target_status_code,
@@ -720,6 +782,10 @@ class ArticleExtractor:
             "publisher": publisher,
             "content_length": content_length,
             "quality": quality,
+            "duration_ms": round(duration_ms, 2),
+            "semaphore_wait_ms": round(semaphore_wait_ms, 2),
+            "retry_count": retry_count,
+            "credits_used": credits_used,
             "retrieved_at": _utc_iso(),
             "failure_reason": failure_reason,
             "error_details": _redact_api_key(error_details) if error_details else None,
@@ -731,6 +797,7 @@ class ArticleExtractor:
             logger.info(
                 f"[EXTRACTION] URL: {url} | [PROVIDER] {provider} | [STATUS] SUCCESS | "
                 f"[METHOD] {method} | [CONTENT_LENGTH] {content_length} | [QUALITY] {quality} | "
+                f"[DURATION_MS] {round(duration_ms, 1)} | [RETRIES] {retry_count} | "
                 f"[TITLE] {page_title or 'N/A'} | [PUBLISHER] {publisher or 'N/A'}"
             )
         else:
@@ -738,6 +805,7 @@ class ArticleExtractor:
             fallback_suffix = f" | [EXA_FALLBACK] {exa_fallback_note}" if exa_fallback_note else ""
             logger.warning(
                 f"[EXTRACTION] URL: {url} | [PROVIDER] {provider} | [STATUS] {status} | "
+                f"[DURATION_MS] {round(duration_ms, 1)} | [RETRIES] {retry_count} | "
                 f"[ERROR] {safe_err}{fallback_suffix}"
             )
 
@@ -790,6 +858,7 @@ class ArticleExtractor:
             )
             return None, "FAILED", None, None
 
+        t_overall = time.perf_counter()
         fetch_url = cls._normalize_fetch_url(url) if is_linkedin else url
         fc = cls._scrape_with_firecrawl(fetch_url)
 
@@ -817,6 +886,10 @@ class ArticleExtractor:
                     page_title=safe_title,
                     publisher=final_publisher,
                     content_length=len(cleaned),
+                    duration_ms=(time.perf_counter() - t_overall) * 1000.0,
+                    semaphore_wait_ms=fc.semaphore_wait_ms,
+                    retry_count=fc.retry_count,
+                    credits_used=fc.credits_used,
                 )
                 return cleaned, "SUCCESS", safe_title, final_publisher
 
@@ -848,12 +921,17 @@ class ArticleExtractor:
                             url=url,
                             method="exa_contents",
                             provider="Exa /contents",
+                            fallback_provider="Exa /contents",
                             status="SUCCESS",
                             api_status_code=fc.api_status_code,
                             target_status_code=fc.target_status_code,
                             page_title=exa_clean_title,
                             publisher=final_publisher or "LinkedIn",
                             content_length=len(exa_cleaned),
+                            duration_ms=(time.perf_counter() - t_overall) * 1000.0,
+                            semaphore_wait_ms=fc.semaphore_wait_ms,
+                            retry_count=fc.retry_count,
+                            credits_used=fc.credits_used,
                         )
                         return exa_cleaned, "SUCCESS", exa_clean_title, final_publisher or "LinkedIn"
                     exa_fallback_note = f"rejected ({exa_reject})"
@@ -870,6 +948,7 @@ class ArticleExtractor:
             url=url,
             method="failed",
             provider="Firecrawl v2",
+            fallback_provider="Exa /contents" if (is_linkedin and settings.EXA_API_KEY) else None,
             status=final_status,
             api_status_code=fc.api_status_code,
             target_status_code=fc.target_status_code,
@@ -878,5 +957,9 @@ class ArticleExtractor:
             failure_reason=fc_reject_reason or fc.error_reason,
             error_details=fc.error_reason or fc_reject_reason,
             exa_fallback_note=exa_fallback_note,
+            duration_ms=(time.perf_counter() - t_overall) * 1000.0,
+            semaphore_wait_ms=fc.semaphore_wait_ms,
+            retry_count=fc.retry_count,
+            credits_used=fc.credits_used,
         )
         return None, final_status, safe_title, final_publisher

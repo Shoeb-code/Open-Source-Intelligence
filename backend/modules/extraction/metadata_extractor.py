@@ -6,7 +6,7 @@ from backend.modules.extraction.transcript_extractor import TranscriptExtractor
 from backend.modules.extraction.article_extractor import ArticleExtractor
 from backend.utils.logger import logger
 from backend.utils.text_cleaner import compute_content_hash, clean_text
-from backend.utils.url_validator import canonicalize_url
+from backend.utils.url_validator import canonicalize_url, extract_youtube_video_id
 
 
 class ExtractedPayload(BaseModel):
@@ -39,8 +39,11 @@ class MetadataExtractor:
         extraction_details: Optional[Dict[str, Any]] = None
 
         source_type = (item.source_type or "WEBPAGE").upper()
+        is_youtube = source_type == "YOUTUBE" or extract_youtube_video_id(canonical_url) is not None
+        if is_youtube:
+            source_type = "YOUTUBE"
 
-        if source_type == "YOUTUBE":
+        if is_youtube:
             if allow_youtube_whisper:
                 content, status = TranscriptExtractor.extract_transcript(canonical_url)
             else:

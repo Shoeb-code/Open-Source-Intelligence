@@ -529,3 +529,45 @@ def test_youtube_urls_continue_using_transcript_workflow(monkeypatch):
     assert payload.extraction_status == "SUCCESS"
     assert payload.extraction_method == "youtube_transcript"
     assert payload.extracted_content == "Full YouTube interview transcript text here."
+
+    # Also verify YouTube URLs mislabeled as PODCAST or EVENT still route to TranscriptExtractor (0 Firecrawl calls)
+    for mislabeled_type in ("PODCAST", "EVENT", "NEWS"):
+        mislabeled_item = DiscoveredItem(
+            title="YouTube Talk Found by Podcast Collector",
+            url="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            source_type=mislabeled_type,
+        )
+        mislabeled_payload = MetadataExtractor.extract(mislabeled_item)
+        assert mislabeled_payload.source_type == "YOUTUBE"
+        assert mislabeled_payload.extraction_method == "youtube_transcript"
+
+
+def test_firecrawl_rejects_image_only_zero_width_and_waf_error_markdown(monkeypatch):
+    monkeypatch.setattr(settings, "FIRECRAWL_API_KEY", "fc-test-secret-key")
+    monkeypatch.setattr(settings, "ARTICLE_MIN_CONTENT_LENGTH", 200)
+
+    samples = [
+        "\u200b\ufeff\u200c",
+        "![Logo reading TOKEN2049 in bold black text on a white background.](https://cdn.prod.website-files.com/6756df8f05088bc3e51c64c0/logo.png) [Speaker Page](https://token2049.com/previous-sessions/long-path)",
+        "Error 401 (Bad Request)!! The server cannot process the request because it is malformed. It should not be retried with additional parameters across distributed clients.",
+        "Dynamic Decrypting... Please wait while security check runs [Security Detection Powered By SafeLine WAF](https://waf.chaitin.com/docs/intro/more-info)",
+    ]
+
+    for bad_md in samples:
+        _install_mock_httpx(
+            monkeypatch,
+            post_handler=lambda url, payload, headers, md=bad_md: _MockResponse(
+                200,
+                json_data={"success": True, "creditsUsed": 1, "data": {"markdown": md, "metadata": {"statusCode": 200}}},
+            ),
+        )
+        content, status, _, _, method = ArticleExtractor.extract_article_with_method("https://example.org/noise-page")
+        assert content is None
+        assert status in ("FAILED", "RESTRICTED")
+        assert method == "failed"
+        details = ArticleExtractor.get_last_extraction_details()
+        assert details is not None
+        assert details["duration_ms"] >= 0.0
+        assert details["credits_used"] == 1
+        assert "semaphore_wait_ms" in details
+        assert "retry_count" in details

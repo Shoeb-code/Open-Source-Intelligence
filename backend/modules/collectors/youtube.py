@@ -77,6 +77,7 @@ class YouTubeCollector:
                 "--dump-json",
                 "--flat-playlist",
                 "--skip-download",
+                "--socket-timeout", "5",
                 "--no-warnings"
             ])
             result = subprocess.run(
@@ -84,7 +85,7 @@ class YouTubeCollector:
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
-                timeout=20,
+                timeout=12,
                 check=False
             )
             if result.returncode == 0 and result.stdout:
@@ -129,7 +130,7 @@ class YouTubeCollector:
             1,
             min(
                 len(queries),
-                settings.QUERY_MAX_WORKERS if self.api_key else min(3, settings.QUERY_MAX_WORKERS),
+                settings.QUERY_MAX_WORKERS if self.api_key else min(4, settings.QUERY_MAX_WORKERS),
             ),
         )
         with ThreadPoolExecutor(max_workers=max_workers) as executor:

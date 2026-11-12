@@ -118,59 +118,62 @@ export default function TargetAccountPage({
     return appearances.filter((a) => a.identity_status !== 'REJECTED');
   }, [appearances]);
 
-  const linkedinCount = validAppearances.filter(
-    (a) =>
+  const verifiedCount = useMemo(
+    () => validAppearances.filter((a) => a.identity_status === 'VERIFIED').length,
+    [validAppearances]
+  );
+
+  function isLinkedInApp(a) {
+    return (
       a.appearance_type === 'LINKEDIN_POST' ||
       a.appearance_type === 'ARTICLE' ||
-      (a.sources?.[0]?.source_url || '').includes('linkedin.com')
-  ).length;
+      a.sources?.some(
+        (s) =>
+          (s.source_type || '').toUpperCase() === 'LINKEDIN' ||
+          (s.source_url || '').toLowerCase().includes('linkedin.com')
+      )
+    );
+  }
 
-  const instagramCount = validAppearances.filter(
-    (a) =>
+  function isInstagramApp(a) {
+    return (
       a.appearance_type === 'INSTAGRAM_POST' ||
       a.appearance_type === 'INSTAGRAM_REEL' ||
-      (a.sources?.[0]?.source_url || '').includes('instagram.com')
-  ).length;
+      a.sources?.some(
+        (s) =>
+          (s.source_type || '').toUpperCase() === 'INSTAGRAM' ||
+          (s.source_url || '').toLowerCase().includes('instagram.com')
+      )
+    );
+  }
 
-  const youtubeCount = validAppearances.filter(
-    (a) =>
-      a.appearance_type === 'PODCAST' ||
-      a.appearance_type === 'INTERVIEW' ||
-      (a.sources?.[0]?.source_url || '').includes('youtube.com')
-  ).length;
+  function isYouTubeApp(a) {
+    return a.sources?.some(
+      (s) =>
+        (s.source_type || '').toUpperCase() === 'YOUTUBE' ||
+        (s.source_url || '').toLowerCase().includes('youtube.com') ||
+        (s.source_url || '').toLowerCase().includes('youtu.be')
+    );
+  }
 
-  const newsCount = validAppearances.filter(
-    (a) =>
+  function isNewsApp(a) {
+    return (
       a.appearance_type === 'NEWS_ARTICLE' ||
-      (a.sources?.[0]?.source_url || '').includes('news')
-  ).length;
+      a.sources?.some((s) => (s.source_type || '').toUpperCase() === 'NEWS')
+    );
+  }
+
+  const linkedinCount = validAppearances.filter(isLinkedInApp).length;
+  const instagramCount = validAppearances.filter(isInstagramApp).length;
+  const youtubeCount = validAppearances.filter(isYouTubeApp).length;
+  const newsCount = validAppearances.filter(isNewsApp).length;
 
   const filteredAppearances = useMemo(() => {
     return validAppearances.filter((app) => {
-      if (activeMediaFilter === 'LINKEDIN') {
-        const isLi =
-          app.appearance_type === 'LINKEDIN_POST' ||
-          app.appearance_type === 'ARTICLE' ||
-          (app.sources?.[0]?.source_url || '').includes('linkedin.com');
-        if (!isLi) return false;
-      } else if (activeMediaFilter === 'INSTAGRAM') {
-        const isIg =
-          app.appearance_type === 'INSTAGRAM_POST' ||
-          app.appearance_type === 'INSTAGRAM_REEL' ||
-          (app.sources?.[0]?.source_url || '').includes('instagram.com');
-        if (!isIg) return false;
-      } else if (activeMediaFilter === 'YOUTUBE') {
-        const isYt =
-          app.appearance_type === 'PODCAST' ||
-          app.appearance_type === 'INTERVIEW' ||
-          (app.sources?.[0]?.source_url || '').includes('youtube.com');
-        if (!isYt) return false;
-      } else if (activeMediaFilter === 'NEWS') {
-        const isNews =
-          app.appearance_type === 'NEWS_ARTICLE' ||
-          (app.sources?.[0]?.source_url || '').includes('news');
-        if (!isNews) return false;
-      }
+      if (activeMediaFilter === 'LINKEDIN' && !isLinkedInApp(app)) return false;
+      if (activeMediaFilter === 'INSTAGRAM' && !isInstagramApp(app)) return false;
+      if (activeMediaFilter === 'YOUTUBE' && !isYouTubeApp(app)) return false;
+      if (activeMediaFilter === 'NEWS' && !isNewsApp(app)) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -199,13 +202,25 @@ export default function TargetAccountPage({
       {/* 1. CLEAN TARGET ACCOUNT HEADER CARD (WHITE LIGHT UI)           */}
       {/* ============================================================== */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        {/* Soft Clean Banner */}
-        <div className="h-24 sm:h-28 w-full bg-gradient-to-r from-blue-50 via-sky-50 to-indigo-50 relative border-b border-slate-200">
+        {/* Soft Gradient Banner */}
+        <div className="h-24 sm:h-28 w-full bg-gradient-to-r from-blue-600/10 via-sky-500/10 to-indigo-600/15 relative border-b border-slate-200">
           <div className="absolute top-3 right-4 flex items-center gap-2">
-            <span className="badge badge-verified">
-              <ShieldCheck size={13} />
-              <span>Verified Person</span>
-            </span>
+            {isAlreadyEnriched ? (
+              <span className="badge badge-verified">
+                <CheckCircle2 size={13} />
+                <span>LinkedIn Enriched</span>
+              </span>
+            ) : verifiedCount > 0 ? (
+              <span className="badge badge-verified">
+                <ShieldCheck size={13} />
+                <span>{verifiedCount} Verified</span>
+              </span>
+            ) : (
+              <span className="badge badge-likely">
+                <ShieldCheck size={13} />
+                <span>Target Profile</span>
+              </span>
+            )}
           </div>
         </div>
 

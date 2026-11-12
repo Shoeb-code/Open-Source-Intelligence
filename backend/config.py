@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # Discovery & Extraction Concurrency Controls
     DISCOVERY_MAX_WORKERS: int = 6
-    QUERY_MAX_WORKERS: int = 4
+    QUERY_MAX_WORKERS: int = 6
     EXTRACTION_MAX_WORKERS: int = 10
     ANALYSIS_MAX_WORKERS: int = 5
     PER_DOMAIN_MAX_CONCURRENCY: int = 3

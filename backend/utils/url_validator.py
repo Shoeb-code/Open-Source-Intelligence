@@ -46,6 +46,25 @@ def canonicalize_url(url: str) -> str:
     except Exception:
         return url
 
+
+def dedup_url_key(url: str) -> str:
+    """
+    Produces a stable deduplication key collapsing YouTube video IDs and
+    bare/subdomain LinkedIn hosts (e.g. linkedin.com, in.linkedin.com -> www.linkedin.com).
+    """
+    canon = canonicalize_url(url)
+    yt_id = extract_youtube_video_id(canon)
+    if yt_id:
+        return f"yt:{yt_id}"
+    try:
+        parsed = urlparse(canon)
+        host = parsed.netloc.lower()
+        if host == "linkedin.com" or host.endswith(".linkedin.com"):
+            return urlunparse(("https", "www.linkedin.com", parsed.path, "", parsed.query, ""))
+    except Exception:
+        pass
+    return canon
+
 def extract_youtube_video_id(url: str) -> Optional[str]:
     """Extracts YouTube 11-character video ID from varied URL formats."""
     patterns = [

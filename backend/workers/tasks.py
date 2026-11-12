@@ -1,5 +1,6 @@
 from collections import defaultdict, deque
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
+import statistics
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
@@ -25,7 +26,7 @@ from backend.modules.analysis.summarizer import AIAnalysisResult, AppearanceSumm
 from backend.workers.celery_app import celery_app
 from backend.utils.logger import logger
 from backend.utils.text_cleaner import compute_content_hash
-from backend.utils.url_validator import canonicalize_url, extract_youtube_video_id
+from backend.utils.url_validator import canonicalize_url, dedup_url_key, extract_youtube_video_id
 
 
 def utc_now() -> datetime:
@@ -53,17 +54,20 @@ def _filter_new_candidates(
     }
     existing_yt_ids = {extract_youtube_video_id(u) for u in existing_canonical_urls if u}
     existing_yt_ids.discard(None)
+    existing_dedup_keys = {dedup_url_key(u) for u in existing_canonical_urls if u}
 
     seen_urls = set()
     seen_yt_ids = set()
+    seen_dedup_keys = set()
     filtered: List[DiscoveredItem] = []
     skipped = 0
 
     for item in discovered_items:
         canon = canonicalize_url(item.url)
         yt_id = extract_youtube_video_id(canon)
+        dkey = dedup_url_key(canon)
 
-        if canon in existing_canonical_urls or canon in seen_urls:
+        if canon in existing_canonical_urls or canon in seen_urls or dkey in existing_dedup_keys or dkey in seen_dedup_keys:
             skipped += 1
             continue
         if yt_id and (yt_id in existing_yt_ids or yt_id in seen_yt_ids):
@@ -71,6 +75,7 @@ def _filter_new_candidates(
             continue
 
         seen_urls.add(canon)
+        seen_dedup_keys.add(dkey)
         if yt_id:
             seen_yt_ids.add(yt_id)
         filtered.append(item)
@@ -380,10 +385,40 @@ def execute_research_pipeline(job_id: str):
 
         extract_time = round(time.time() - extract_start, 2)
         method_counts: Dict[str, int] = {}
+        durations_ms: List[float] = []
+        total_retries = 0
+        total_sem_wait_ms = 0.0
+        status_counts: Dict[str, int] = {}
         for payload in extracted_payloads:
             m = payload.extraction_method or "unknown"
             method_counts[m] = method_counts.get(m, 0) + 1
+            det = payload.extraction_details or {}
+            if isinstance(det.get("duration_ms"), (int, float)) and det["duration_ms"] > 0:
+                durations_ms.append(float(det["duration_ms"]))
+            if isinstance(det.get("semaphore_wait_ms"), (int, float)):
+                total_sem_wait_ms += float(det["semaphore_wait_ms"])
+            if isinstance(det.get("retry_count"), int):
+                total_retries += det["retry_count"]
+            api_code = det.get("api_status_code")
+            if isinstance(api_code, int) and api_code != 200:
+                key = f"fc_{api_code}"
+                status_counts[key] = status_counts.get(key, 0) + 1
+            elif isinstance(det.get("failure_reason"), str) and "Timeout" in det["failure_reason"]:
+                status_counts["fc_timeout"] = status_counts.get("fc_timeout", 0) + 1
+
         methods_summary = ", ".join(f"{k}={v}" for k, v in sorted(method_counts.items()))
+        perf_parts = []
+        if durations_ms:
+            perf_parts.append(
+                f"avg_ms={round(statistics.mean(durations_ms), 1)}, "
+                f"p50_ms={round(statistics.median(durations_ms), 1)}, "
+                f"max_ms={round(max(durations_ms), 1)}, "
+                f"sem_wait_ms={round(total_sem_wait_ms, 1)}, retries={total_retries}"
+            )
+        if status_counts:
+            perf_parts.append(", ".join(f"{k}={v}" for k, v in sorted(status_counts.items())))
+        perf_suffix = f" [{' | '.join(perf_parts)}]" if perf_parts else ""
+
         db.add(CollectionLog(
             job_id=job.id,
             source="ContentExtractionEngine",
@@ -393,6 +428,7 @@ def execute_research_pipeline(job_id: str):
                 f"Extracted {len(extracted_payloads)}/{len(items_to_extract)} items "
                 f"(pre-skipped {skipped_duplicates} duplicates/existing)"
                 + (f" ({methods_summary})" if methods_summary else "")
+                + perf_suffix
             )
         ))
         job.progress = 65
